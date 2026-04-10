@@ -1,82 +1,79 @@
-"""Tests for iterative coarse-to-fine hyperparameter tuning."""
+"""Tests for Optuna-based hyperparameter tuning."""
 
 import numpy as np
+from sklearn.ensemble import AdaBoostRegressor
 from sklearn.linear_model import Ridge
+from sklearn.tree import DecisionTreeRegressor
 
-from quant_trading.tuning import _build_fine_grid, iterative_grid_search
-
-
-class TestBuildFineGrid:
-    def test_log_scale(self):
-        best = {"alpha": 1.0}
-        specs = {"alpha": {"type": "log", "factor": 2.0, "points": 5, "min": 0.01}}
-        grid = _build_fine_grid(best, specs)
-        assert "alpha" in grid
-        vals = grid["alpha"]
-        assert len(vals) == 5
-        assert min(vals) >= 0.01
-        assert vals[0] < 1.0 < vals[-1]
-
-    def test_int_linear(self):
-        best = {"n_estimators": 100}
-        specs = {"n_estimators": {"type": "int_linear", "step": 20, "points": 5, "min": 10}}
-        grid = _build_fine_grid(best, specs)
-        vals = grid["n_estimators"]
-        assert all(isinstance(v, (int, np.integer)) for v in vals)
-        assert 100 in vals
-
-    def test_respects_bounds(self):
-        best = {"alpha": 0.001}
-        specs = {"alpha": {"type": "log", "factor": 10.0, "min": 0.0005, "max": 1.0}}
-        grid = _build_fine_grid(best, specs)
-        assert min(grid["alpha"]) >= 0.0005
-        assert max(grid["alpha"]) <= 1.0
+from quant_trading.tuning import tune_sklearn_model
 
 
-class TestIterativeGridSearch:
-    def test_converges_on_ridge(self):
-        rng = np.random.default_rng(42)
-        n = 500
+class TestTuneSklearnModel:
+    def _make_data(self, n=300, seed=42):
+        rng = np.random.default_rng(seed)
         X = rng.normal(0, 1, (n, 5))
         y = X @ rng.normal(0, 1, 5) + rng.normal(0, 0.1, n)
+        return X, y
 
-        initial_grid = {"alpha": [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]}
-        param_specs = {
-            "alpha": {"type": "log", "factor": 3.0, "points": 5, "min": 1e-6, "max": 1000}
-        }
+    def test_ridge_finds_good_alpha(self):
+        X, y = self._make_data()
 
-        result = iterative_grid_search(
-            Ridge(),
-            initial_grid=initial_grid,
-            param_specs=param_specs,
-            X=X,
-            y=y,
+        def ridge_objective(trial):
+            alpha = trial.suggest_float("alpha", 1e-4, 100.0, log=True)
+            return Ridge(alpha=alpha)
+
+        result = tune_sklearn_model(
+            ridge_objective,
+            X,
+            y,
+            n_trials=20,
             cv=3,
-            max_rounds=4,
-            verbose=0,
+            verbose=False,
         )
-
-        assert result["best_estimator"] is not None
         assert result["best_params"]["alpha"] > 0
-        assert result["rounds"] >= 1
-        assert len(result["history"]) >= 1
+        assert result["best_estimator"] is not None
         assert result["best_score"] < 0  # neg MSE
+        assert result["study"] is not None
 
-    def test_stops_on_convergence(self):
-        rng = np.random.default_rng(42)
-        X = rng.normal(0, 1, (200, 3))
-        y = X[:, 0] + rng.normal(0, 0.01, 200)
+    def test_adaboost_search(self):
+        X, y = self._make_data()
 
-        result = iterative_grid_search(
-            Ridge(),
-            initial_grid={"alpha": [0.01, 0.1, 1.0]},
-            param_specs={"alpha": {"type": "log", "factor": 2.0, "points": 3, "min": 1e-6}},
-            X=X,
-            y=y,
+        def ada_objective(trial):
+            return AdaBoostRegressor(
+                estimator=DecisionTreeRegressor(
+                    max_depth=trial.suggest_int("max_depth", 1, 4),
+                    random_state=42,
+                ),
+                n_estimators=trial.suggest_int("n_estimators", 10, 100, log=True),
+                learning_rate=trial.suggest_float("lr", 0.01, 1.0, log=True),
+                random_state=42,
+            )
+
+        result = tune_sklearn_model(
+            ada_objective,
+            X,
+            y,
+            n_trials=15,
             cv=3,
-            max_rounds=10,
-            min_score_improvement=1e-8,
-            verbose=0,
+            verbose=False,
         )
-        # Should converge well before 10 rounds
-        assert result["rounds"] < 10
+        assert "max_depth" in result["best_params"]
+        assert "n_estimators" in result["best_params"]
+        assert "lr" in result["best_params"]
+        assert result["best_estimator"] is not None
+
+    def test_study_has_trials(self):
+        X, y = self._make_data(n=100)
+
+        def ridge_fn(trial):
+            return Ridge(alpha=trial.suggest_float("alpha", 0.01, 10.0, log=True))
+
+        result = tune_sklearn_model(
+            ridge_fn,
+            X,
+            y,
+            n_trials=10,
+            cv=3,
+            verbose=False,
+        )
+        assert len(result["study"].trials) == 10

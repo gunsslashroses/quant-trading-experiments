@@ -12,6 +12,7 @@ dependencies = [
     "tqdm",
     "plotly",
     "scikit-learn",
+    "optuna",
 ]
 
 [project.optional-dependencies]

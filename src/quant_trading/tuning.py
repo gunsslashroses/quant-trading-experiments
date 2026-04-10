@@ -1,224 +1,208 @@
-"""Iterative coarse-to-fine hyperparameter tuning.
+"""Bayesian hyperparameter tuning with Optuna.
 
-Implements the successive refinement pattern:
-1. Start with a broad parameter grid.
-2. Run cross-validated grid search.
-3. Build a finer grid centered on the best parameters found.
-4. Repeat until convergence (score plateau, parameter stability, or max iterations).
+Provides ready-to-use tuning functions for the ML models in this project:
 
-Works with any scikit-learn estimator/pipeline via ``GridSearchCV``.
+- ``tune_sklearn_model``: Optuna-based tuning for any sklearn estimator
+  (AdaBoost, Random Forest, Ridge, etc.) with temporal cross-validation.
+- ``tune_keras_nn``: Optuna-based tuning for Keras neural networks with
+  temporal cross-validation, handling session cleanup and early stopping.
+- ``make_param_space``: convenience builder for Optuna search spaces from
+  a declarative dict spec.
+
+Why Optuna over GridSearchCV:
+- **Sample-efficient**: TPE sampler explores promising regions automatically
+  (same idea as manual coarse-to-fine, but principled and adaptive).
+- **Early pruning**: MedianPruner kills unpromising trials before they finish.
+- **Mixed types**: handles int, float (linear/log), categorical natively.
+- **No manual grid definition**: just set bounds, let the algorithm search.
 """
 
 from __future__ import annotations
 
+import gc
 import logging
-from copy import deepcopy
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
-from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
+import optuna
+from sklearn.model_selection import TimeSeriesSplit, cross_val_score
 
+optuna.logging.set_verbosity(optuna.logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
-def _build_fine_grid(
-    best_params: dict[str, Any],
-    param_specs: dict[str, dict],
-) -> dict[str, list]:
-    """Build the next finer grid centered on *best_params*.
-
-    Parameters
-    ----------
-    best_params : dict
-        Best parameters from the previous round.
-    param_specs : dict
-        For each parameter name, a dict with:
-        - ``type``: ``"log"`` (geometric steps) or ``"linear"`` (arithmetic)
-          or ``"int_linear"`` (integer arithmetic).
-        - ``factor``: for log-scale, how much to multiply/divide by (e.g. 2.0).
-        - ``step``: for linear/int_linear, step size around best value.
-        - ``points``: number of points to generate (default 5).
-        - ``min``, ``max``: optional hard bounds.
-
-    Returns
-    -------
-    dict[str, list]
-        Parameter grid suitable for ``GridSearchCV``.
-    """
-    fine_grid: dict[str, list] = {}
-
-    for param_name, spec in param_specs.items():
-        best_val = best_params[param_name]
-        ptype = spec.get("type", "log")
-        n_points = spec.get("points", 5)
-        lo_bound = spec.get("min", None)
-        hi_bound = spec.get("max", None)
-
-        if ptype == "log":
-            factor = spec.get("factor", 2.0)
-            lo = best_val / factor
-            hi = best_val * factor
-            if lo_bound is not None:
-                lo = max(lo, lo_bound)
-            if hi_bound is not None:
-                hi = min(hi, hi_bound)
-            candidates = np.geomspace(lo, hi, n_points).tolist()
-
-        elif ptype == "linear":
-            step = spec.get("step", best_val * 0.25 if best_val != 0 else 0.1)
-            half_range = step * (n_points // 2)
-            lo = best_val - half_range
-            hi = best_val + half_range
-            if lo_bound is not None:
-                lo = max(lo, lo_bound)
-            if hi_bound is not None:
-                hi = min(hi, hi_bound)
-            candidates = np.linspace(lo, hi, n_points).tolist()
-
-        elif ptype == "int_linear":
-            step = spec.get("step", max(1, int(best_val * 0.2)))
-            half_range = step * (n_points // 2)
-            lo = int(best_val - half_range)
-            hi = int(best_val + half_range)
-            if lo_bound is not None:
-                lo = max(lo, int(lo_bound))
-            if hi_bound is not None:
-                hi = min(hi, int(hi_bound))
-            candidates = list(range(lo, hi + 1, step))
-            if best_val not in candidates:
-                candidates.append(int(best_val))
-                candidates.sort()
-
-        else:
-            raise ValueError(f"Unknown param type '{ptype}' for '{param_name}'")
-
-        fine_grid[param_name] = sorted(set(candidates))
-
-    return fine_grid
-
-
-def iterative_grid_search(
-    estimator,
-    initial_grid: dict[str, list],
-    param_specs: dict[str, dict],
-    X,
-    y,
+def tune_sklearn_model(
+    estimator_fn: Callable[[optuna.Trial], Any],
+    X: np.ndarray,
+    y: np.ndarray,
+    n_trials: int = 100,
     cv: int | Any = 5,
     scoring: str = "neg_mean_squared_error",
-    max_rounds: int = 5,
-    min_score_improvement: float = 1e-6,
-    n_jobs: int = -1,
-    verbose: int = 1,
+    n_jobs_cv: int = 1,
+    random_state: int = 42,
+    verbose: bool = True,
 ) -> dict[str, Any]:
-    """Run iterative coarse-to-fine grid search.
+    """Tune a scikit-learn estimator using Optuna.
 
     Parameters
     ----------
-    estimator
-        scikit-learn estimator or pipeline.
-    initial_grid : dict
-        Starting parameter grid (broad search space).
-    param_specs : dict
-        Refinement specs for each parameter (see ``_build_fine_grid``).
-    X, y
+    estimator_fn : callable
+        Function that takes an ``optuna.Trial`` and returns a configured
+        estimator instance.  Use ``trial.suggest_*`` inside this function
+        to define the search space.
+    X, y : array-like
         Training data.
+    n_trials : int
+        Number of Optuna trials (default 100).
     cv : int or CV splitter
-        Cross-validation strategy. Defaults to 5-fold ``TimeSeriesSplit``.
+        Cross-validation strategy.  If int, uses ``TimeSeriesSplit(n_splits=cv)``.
     scoring : str
-        Scoring metric (must be a "higher is better" metric for sklearn).
-    max_rounds : int
-        Maximum number of refinement rounds.
-    min_score_improvement : float
-        Stop if the best CV score improves by less than this between rounds.
-    n_jobs : int
-        Parallelism for GridSearchCV.
-    verbose : int
-        0 = silent, 1 = summary per round, 2 = detailed.
+        sklearn scoring metric (higher is better).
+    n_jobs_cv : int
+        Parallelism *within* each CV call.  Optuna parallelism should be
+        controlled via ``n_trials`` and study-level settings.
+    random_state : int
+        Seed for the TPE sampler.
+    verbose : bool
+        Print progress summary.
 
     Returns
     -------
     dict with keys:
-        ``best_estimator``, ``best_params``, ``best_score``,
-        ``rounds``, ``history`` (list of per-round results).
+        ``best_params``, ``best_score``, ``best_estimator`` (refit on full
+        training data), ``study`` (the Optuna study object).
+
+    Example
+    -------
+    >>> def objective_fn(trial):
+    ...     return AdaBoostRegressor(
+    ...         estimator=DecisionTreeRegressor(
+    ...             max_depth=trial.suggest_int("max_depth", 1, 6),
+    ...         ),
+    ...         n_estimators=trial.suggest_int("n_estimators", 50, 500, log=True),
+    ...         learning_rate=trial.suggest_float("learning_rate", 1e-4, 2.0, log=True),
+    ...         random_state=42,
+    ...     )
+    >>> result = tune_sklearn_model(objective_fn, X_train, y_train, n_trials=80)
     """
     if isinstance(cv, int):
         cv = TimeSeriesSplit(n_splits=cv)
 
-    current_grid = deepcopy(initial_grid)
-    best_score_overall = -np.inf
-    best_params_overall = None
-    best_estimator_overall = None
-    history: list[dict] = []
+    def objective(trial: optuna.Trial) -> float:
+        model = estimator_fn(trial)
+        scores = cross_val_score(model, X, y, cv=cv, scoring=scoring, n_jobs=n_jobs_cv)
+        return scores.mean()
 
-    for round_num in range(1, max_rounds + 1):
-        grid_size = 1
-        for v in current_grid.values():
-            grid_size *= len(v)
+    sampler = optuna.samplers.TPESampler(seed=random_state)
+    study = optuna.create_study(direction="maximize", sampler=sampler)
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=verbose)
 
-        if verbose >= 1:
-            print(
-                f"  Round {round_num}/{max_rounds}: "
-                f"{grid_size} combos, grid={_grid_summary(current_grid)}"
-            )
+    if verbose:
+        print(f"  Optuna: {len(study.trials)} trials completed")
+        print(f"  Best CV score: {study.best_value:.6f}")
+        print(f"  Best params:   {study.best_params}")
 
-        search = GridSearchCV(
-            deepcopy(estimator),
-            current_grid,
-            cv=cv,
-            scoring=scoring,
-            n_jobs=n_jobs,
-            refit=True,
-        )
-        search.fit(X, y)
-
-        round_best_score = search.best_score_
-        round_best_params = search.best_params_
-
-        if verbose >= 1:
-            print(f"         Best score: {round_best_score:.6f}, params: {round_best_params}")
-
-        history.append(
-            {
-                "round": round_num,
-                "grid": deepcopy(current_grid),
-                "best_score": round_best_score,
-                "best_params": round_best_params,
-            }
-        )
-
-        improvement = round_best_score - best_score_overall
-        if round_best_score > best_score_overall:
-            best_score_overall = round_best_score
-            best_params_overall = round_best_params
-            best_estimator_overall = search.best_estimator_
-
-        # Check convergence
-        if round_num > 1 and improvement < min_score_improvement:
-            if verbose >= 1:
-                print(
-                    f"  Converged: improvement={improvement:.2e} "
-                    f"< threshold={min_score_improvement:.2e}"
-                )
-            break
-
-        if round_num < max_rounds:
-            current_grid = _build_fine_grid(round_best_params, param_specs)
+    # Refit best model on full training data
+    best_model = estimator_fn(study.best_trial)
+    best_model.fit(X, y)
 
     return {
-        "best_estimator": best_estimator_overall,
-        "best_params": best_params_overall,
-        "best_score": best_score_overall,
-        "rounds": len(history),
-        "history": history,
+        "best_params": study.best_params,
+        "best_score": study.best_value,
+        "best_estimator": best_model,
+        "study": study,
     }
 
 
-def _grid_summary(grid: dict[str, list]) -> str:
-    parts = []
-    for k, v in grid.items():
-        short_key = k.split("__")[-1] if "__" in k else k
-        if len(v) <= 3:
-            parts.append(f"{short_key}={v}")
-        else:
-            parts.append(f"{short_key}=[{v[0]}..{v[-1]}]({len(v)})")
-    return ", ".join(parts)
+def tune_keras_nn(
+    build_fn: Callable[[optuna.Trial], Any],
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    n_trials: int = 50,
+    cv: int = 5,
+    epochs: int = 100,
+    batch_size: int = 512,
+    patience: int = 10,
+    random_state: int = 42,
+    verbose: bool = True,
+) -> dict[str, Any]:
+    """Tune a Keras model using Optuna with temporal cross-validation.
+
+    Parameters
+    ----------
+    build_fn : callable
+        Function ``(trial) -> compiled keras.Model``.  Use
+        ``trial.suggest_*`` to define the HP search space.
+    X_train, y_train : ndarray
+        Training data (already scaled).
+    n_trials : int
+        Number of Optuna trials.
+    cv : int
+        Number of ``TimeSeriesSplit`` folds.
+    epochs : int
+        Max training epochs per fold (early stopping will cut short).
+    batch_size : int
+        Mini-batch size.
+    patience : int
+        Early-stopping patience.
+    random_state : int
+        Seed for the TPE sampler.
+    verbose : bool
+        Print progress summary.
+
+    Returns
+    -------
+    dict with keys:
+        ``best_params``, ``best_score`` (mean val loss across folds),
+        ``study``.
+    """
+    import tensorflow as tf
+
+    tscv = TimeSeriesSplit(n_splits=cv)
+
+    def objective(trial: optuna.Trial) -> float:
+        cv_losses = []
+        for train_idx, val_idx in tscv.split(X_train):
+            X_tr, X_val = X_train[train_idx], X_train[val_idx]
+            y_tr = y_train[train_idx].astype(np.float32)
+            y_val = y_train[val_idx].astype(np.float32)
+
+            with tf.device("/CPU:0"):
+                model = build_fn(trial)
+                cb = tf.keras.callbacks.EarlyStopping(
+                    monitor="val_loss",
+                    patience=patience,
+                    restore_best_weights=True,
+                )
+                history = model.fit(
+                    X_tr,
+                    y_tr,
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    validation_data=(X_val, y_val),
+                    callbacks=[cb],
+                    verbose=0,
+                )
+                best_val_loss = min(history.history["val_loss"])
+                cv_losses.append(best_val_loss)
+
+            tf.keras.backend.clear_session()
+            del model, history
+            gc.collect()
+
+        return np.mean(cv_losses)
+
+    sampler = optuna.samplers.TPESampler(seed=random_state)
+    study = optuna.create_study(direction="minimize", sampler=sampler)
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=verbose)
+
+    if verbose:
+        print(f"  Optuna: {len(study.trials)} trials completed")
+        print(f"  Best CV val loss: {study.best_value:.6f}")
+        print(f"  Best params:      {study.best_params}")
+
+    return {
+        "best_params": study.best_params,
+        "best_score": study.best_value,
+        "study": study,
+    }
