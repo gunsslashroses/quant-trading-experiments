@@ -1,0 +1,36 @@
+[project]
+name = "quant-trading-experiments"
+version = "0.1.0"
+description = "Quantitative trading: factor models, signal combination, and ML prediction"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "seaborn",
+    "pandas-datareader",
+    "tqdm",
+    "plotly",
+    "scikit-learn",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+ml = [
+    "tensorflow",
+    "torch",
+    "ipca",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
