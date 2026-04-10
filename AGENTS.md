@@ -24,4 +24,5 @@ Python-based quantitative trading research project. Factor models, signal combin
 - `fetch_ff5_factors()` in `factors.py` does a lazy import of `pandas_datareader` to avoid import errors when that module has compatibility issues.
 - Data files (`data/jkp_data.csv`) are not tracked in git. Notebooks won't run end-to-end without the JKP data from WRDS.
 - ML notebook (04) requires optional `[ml]` extras: `tensorflow`, `torch`, `ipca`.
+- HP tuning for DNN and AdaBoost uses **Optuna** (included in base deps). See `quant_trading.tuning` for the reusable `tune_sklearn_model` and `tune_keras_nn` wrappers.
 - No external services needed. Everything runs locally.

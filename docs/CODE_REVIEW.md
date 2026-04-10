@@ -35,14 +35,16 @@ Column `iid` has mixed types (some numeric, some string like "01"). Fix by speci
 ### 5. DNN: multiple hyperparameter tuning issues (FIXED)
 **Location**: Notebook 04, DNN section.
 
+All issues below were fixed by switching to **Optuna** (Bayesian optimization with TPE sampler) for HP search, plus architectural corrections.
+
 **5a. Look-ahead bias in final training validation split.**
-The original code used `validation_split=0.2` in `model.fit()`. Keras implements this as a random split of the last 20% of the *shuffled* data. For time-series panel data, this leaks future information into the validation set. **Fixed**: explicit temporal split — first 80% of training data for fitting, last 20% (chronologically) for early stopping.
+The original code used `validation_split=0.2` in `model.fit()`. Keras implements this as taking the last 20% of the *array* (which, for unsorted panel data, may mix time periods). For time-series panel data, this risks leaking future information into the validation set. **Fixed**: explicit temporal split — first 80% of training data for fitting, last 20% (chronologically) for early stopping.
 
 **5b. Only L1 regularization was tuned.**
-Learning rate was left at Adam's default (1e-3). In practice, the L1–LR interaction is strong: high L1 with high LR can zero out weights too aggressively, while low L1 with low LR may underfit. **Fixed**: joint grid search over L1 × learning rate.
+Learning rate was left at Adam's default (1e-3). In practice, the L1–LR interaction is strong: high L1 with high LR can zero out weights too aggressively, while low L1 with low LR may underfit. **Fixed**: Optuna jointly searches L1 (`1e-6` to `1e-1`, log), learning rate (`1e-5` to `1e-2`, log), dropout rate (`0.0` to `0.5`), and layer widths.
 
 **5c. Only 10 epochs during CV search.**
-With `batch_size=2048` on datasets of ~50k–500k rows, each epoch has very few gradient steps (e.g., 50k/2048 ≈ 24 steps). 10 epochs = ~240 steps total — the model barely starts learning. **Fixed**: 50 epochs during CV, 200 during final training, with early stopping patience=10–15.
+With `batch_size=2048` on datasets of ~50k–500k rows, each epoch has very few gradient steps (e.g., 50k/2048 ≈ 24 steps). 10 epochs = ~240 steps total — the model barely starts learning. **Fixed**: 100 epochs per CV fold with early stopping (patience=10).
 
 **5d. batch_size=2048 too large.**
 Reduces the number of weight updates per epoch and can hurt generalization. **Fixed**: batch_size=512.
@@ -51,7 +53,7 @@ Reduces the number of weight updates per epoch and can hurt generalization. **Fi
 `bias_regularizer=regularizers.L1(l1=1e-05)` pushes biases toward zero. This is harmful for BatchNormalization layers (which rely on learned bias-like parameters) and for the output layer's intercept. It's also unusual practice. **Fixed**: removed bias regularization, added Dropout instead.
 
 **5f. Only 2 CV folds.**
-TimeSeriesSplit(n_splits=2) gives high variance in HP estimates. **Fixed**: 5 folds.
+TimeSeriesSplit(n_splits=2) gives high variance in HP estimates. **Fixed**: 5-fold `TimeSeriesSplit`.
 
 **5g. GPU memory.**
 The original code doesn't set GPU memory growth limits. On shared environments this can cause OOM crashes. Consider adding `tf.config.experimental.set_memory_growth(gpu, True)`.
@@ -59,17 +61,19 @@ The original code doesn't set GPU memory growth limits. On shared environments t
 ### 6. AdaBoost: hyperparameter tuning issues (FIXED)
 **Location**: Notebook 04, AdaBoost section.
 
-**6a. Coarse grid too narrow.**
-Only searched `max_depth=[1,2]` and `n_estimators=[10,50,100]`. For cross-sectional return prediction with ~50 features, depth 3–4 and 200–500 estimators are often better. **Fixed**: depth [1–4], n_estimators [50–500].
+All issues below were fixed by switching to **Optuna** for HP search.
 
-**6b. Fine grid used fixed additive steps.**
-`n_estimators ± 20` and `learning_rate * {0.5, 1.0, 2.0}` is a mismatch: n_estimators uses additive steps while learning_rate uses multiplicative. If coarse best was n_estimators=100, the fine grid [80, 100, 120] is reasonable. But if coarse best was n_estimators=10, the fine grid [-10, 10, 30] is broken (negative values). **Fixed**: proportional int steps for n_estimators, geometric steps for learning_rate.
+**6a. Search space too narrow.**
+Only searched `max_depth=[1,2]` and `n_estimators=[10,50,100]`. **Fixed**: Optuna searches `max_depth` in `[1, 6]`, `n_estimators` in `[50, 1000]` (log-scale), `learning_rate` in `[1e-4, 2.0]` (log-scale) — all with proper scale handling.
+
+**6b. Manual fine grid with wrong step types.**
+`n_estimators ± 20` and `learning_rate * {0.5, 1.0, 2.0}` is a mismatch. If coarse best was n_estimators=10, the fine grid [-10, 10, 30] is broken. **Fixed**: Optuna handles mixed int/float/log types natively — no manual grid construction needed.
 
 **6c. Fine search froze max_depth.**
-The fine grid only searched the coarse-best depth, missing better depth±1 combinations. **Fixed**: depth ±1 in fine grid.
+The fine grid only searched the coarse-best depth. **Fixed**: Optuna explores all HPs continuously across all trials.
 
 **6d. Only 2 CV folds.**
-Same issue as DNN. **Fixed**: 5-fold TimeSeriesSplit via `iterative_grid_search`.
+Same issue as DNN. **Fixed**: 5-fold `TimeSeriesSplit`.
 
 ### 7. MSRR loss function: simplified portfolio simulation
 **Location**: Notebook 04, MSRR section.

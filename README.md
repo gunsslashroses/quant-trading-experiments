@@ -11,6 +11,7 @@ Systematic exploration of cross-sectional equity return predictability using fac
 │   ├── signals.py            # Signal generation, scaling, IC weights
 │   ├── portfolio.py          # Portfolio return engines (classic + generalized)
 │   ├── strategies.py         # High-level strategy runners (M1/M2/M3)
+│   ├── tuning.py             # Optuna-based Bayesian HP tuning (DNN, AdaBoost, etc.)
 │   ├── evaluation.py         # Performance metrics, OOS R², decile analysis
 │   └── plotting.py           # Visualization helpers
 │
@@ -63,17 +64,17 @@ Three ways to combine all 13 signals:
 - **M3 (IC-Weighted Composite)**: rolling-IC weights → best Sharpe ~1.49
 
 ### 04 — ML Return Prediction
-Seven models trained on 1970–2015, tested 2016+:
+Seven models trained on 1970–2015, tested 2016+. DNN and AdaBoost use **Optuna** (Bayesian optimization with TPE sampler) for hyperparameter tuning with 5-fold temporal cross-validation. See `quant_trading.tuning` for the reusable tuning functions.
 
-| Model | OOS R² | Best Portfolio Sharpe |
-|-------|--------|-----------------------|
-| Linear Regression | 0.004 | 3.39 |
-| RBF Kernel Ridge | 0.005 | 5.20 |
-| Random Forest | 0.007 | 6.25 |
-| Deep Neural Network | — | — |
-| AdaBoost | — | — |
-| Max Sharpe Regression | — | — |
-| IPCA | 0.004 | 3.33 |
+| Model | HP Tuning | OOS R² | Best Portfolio Sharpe |
+|-------|-----------|--------|-----------------------|
+| Linear Regression | — | 0.004 | 3.39 |
+| RBF Kernel Ridge | GridSearchCV | 0.005 | 5.20 |
+| Random Forest | Fixed | 0.007 | 6.25 |
+| Deep Neural Network | Optuna (50 trials) | — | — |
+| AdaBoost | Optuna (100 trials) | — | — |
+| Max Sharpe Regression | — | — | — |
+| IPCA | — | 0.004 | 3.33 |
 
 ## Running Tests
 

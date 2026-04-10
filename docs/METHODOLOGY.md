@@ -67,10 +67,19 @@ All models predict `ret_exc_lead1m_w` (winsorized next-month excess return).
 1. **Linear Regression** — baseline OLS.
 2. **RBF Kernel Ridge** — Nystroem approximation (300 components) + Ridge regression; captures nonlinearities without O(N³) kernel computation.
 3. **Random Forest** — 100 trees, max depth 6.
-4. **Deep Neural Network** — 2-hidden-layer NN (32→16) with BatchNorm, L1 regularization, coarse-to-fine hyperparameter search.
-5. **AdaBoost** — boosted decision stumps with coarse-to-fine grid search.
+4. **Deep Neural Network** — 2-hidden-layer NN with BatchNorm, Dropout, and L1 regularization. Hyperparameters (L1 strength, learning rate, dropout rate, layer widths) tuned via Optuna with 5-fold temporal CV.
+5. **AdaBoost** — boosted decision trees. Hyperparameters (max_depth, n_estimators, learning_rate) tuned via Optuna with 5-fold temporal CV.
 6. **Max Sharpe Ratio Regression (MSRR)** — linear model trained with custom PyTorch loss that maximizes in-sample portfolio Sharpe ratio.
 7. **IPCA** — Instrumented PCA (Kelly, Pruitt, Su 2019); latent factor model where factor loadings are linear functions of observable characteristics.
+
+### Hyperparameter Tuning
+
+All tunable models (DNN, AdaBoost) use **Optuna** (Bayesian optimization with the TPE sampler) instead of manual grid search. This is the modern best practice because:
+- The TPE sampler builds a probabilistic model of which HP regions produce good scores, and focuses subsequent trials on the most promising regions — the same concept as iterative coarse-to-fine refinement, but automatic and principled.
+- Mixed parameter types (log-scale floats, integers, categoricals) are handled natively.
+- The search is reproducible via a seeded sampler.
+
+Cross-validation for all HP tuning uses `TimeSeriesSplit(n_splits=5)` to prevent look-ahead bias. The final model is trained with a **temporal validation split** (first 80% of training data for fitting, last 20% for early stopping) — never a random split.
 
 ### Portfolio Evaluation
 Each model's predictions are used to sort stocks into long/short portfolios. Evaluated across multiple percentile/weight-scheme configurations.

@@ -6,15 +6,34 @@ Provides ready-to-use tuning functions for the ML models in this project:
   (AdaBoost, Random Forest, Ridge, etc.) with temporal cross-validation.
 - ``tune_keras_nn``: Optuna-based tuning for Keras neural networks with
   temporal cross-validation, handling session cleanup and early stopping.
-- ``make_param_space``: convenience builder for Optuna search spaces from
-  a declarative dict spec.
 
-Why Optuna over GridSearchCV:
-- **Sample-efficient**: TPE sampler explores promising regions automatically
-  (same idea as manual coarse-to-fine, but principled and adaptive).
-- **Early pruning**: MedianPruner kills unpromising trials before they finish.
-- **Mixed types**: handles int, float (linear/log), categorical natively.
-- **No manual grid definition**: just set bounds, let the algorithm search.
+Why Optuna over manual grid search (coarse-to-fine):
+
+1. **Sample-efficient**: the TPE (Tree-structured Parzen Estimator) sampler
+   builds a probabilistic model of which HP regions yield good scores and
+   focuses future trials there — the same idea as manual coarse-to-fine
+   refinement, but automatic, adaptive, and principled.
+2. **Mixed parameter types**: handles int, float (linear or log scale), and
+   categorical natively.  No need to manually define grid spacing rules for
+   each parameter type.
+3. **No manual grid definition**: just specify bounds and scale; the sampler
+   decides where to evaluate next.
+4. **Reproducible**: seeded TPE sampler gives deterministic trial sequences.
+
+Usage pattern (sklearn)::
+
+    def objective(trial):
+        return AdaBoostRegressor(
+            estimator=DecisionTreeRegressor(
+                max_depth=trial.suggest_int("max_depth", 1, 6),
+            ),
+            n_estimators=trial.suggest_int("n_estimators", 50, 500, log=True),
+            learning_rate=trial.suggest_float("lr", 1e-4, 2.0, log=True),
+            random_state=42,
+        )
+
+    result = tune_sklearn_model(objective, X_train, y_train, n_trials=100)
+    best_model = result["best_estimator"]
 """
 
 from __future__ import annotations
