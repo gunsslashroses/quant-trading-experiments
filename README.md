@@ -7,7 +7,7 @@ Systematic exploration of cross-sectional equity return predictability using fac
 ```
 ├── src/quant_trading/        # Reusable library modules
 │   ├── data.py               # Data loading, cleaning, winsorization, feature prep
-│   ├── factors.py            # Fama-French 2×3 factor construction
+│   ├── factors.py            # FF factor download & comparison utilities
 │   ├── signals.py            # Signal generation, scaling, IC weights
 │   ├── portfolio.py          # Portfolio return engines (classic + generalized)
 │   ├── strategies.py         # High-level strategy runners (M1/M2/M3)
@@ -15,7 +15,6 @@ Systematic exploration of cross-sectional equity return predictability using fac
 │   └── plotting.py           # Visualization helpers
 │
 ├── notebooks/                # Exploratory analysis (run in order)
-│   ├── 01_factor_construction.ipynb      # FF factor reconstruction & validation
 │   ├── 02_single_factor_strategies.ipynb # 832-config grid search across 13 chars
 │   ├── 03_combined_signal_methods.ipynb  # Consensus / Composite / IC-weighted
 │   └── 04_ml_return_prediction.ipynb     # 7 ML models for return prediction
@@ -53,9 +52,6 @@ pip install tensorflow torch ipca
 ```
 
 ## Notebooks Overview
-
-### 01 — Factor Construction
-Reconstructs SMB and HML using the Fama-French 2×3 methodology on JKP data, then validates against the official factors (correlation analysis + cumulative return comparison).
 
 ### 02 — Single-Factor Strategies
 Grid search across **832 configurations**: 13 characteristics × 4 percentile pairs × 4 weight schemes × 4 max-weight caps. Top strategies ranked by Sharpe ratio. Key finding: short-term reversal (`ret_1_0`) dominates with Sharpe ~3.4.

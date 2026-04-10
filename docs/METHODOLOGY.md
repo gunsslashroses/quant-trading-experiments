@@ -27,16 +27,6 @@
 2. **Rank standardization**: for ML models, map each feature to [−1, 1] via percentile ranks within each month.
 3. **Missing values**: filled with cross-sectional median (per month), then remaining NaN filled with 0.
 
-## Factor Construction (Notebook 01)
-
-Standard Fama-French 2×3 sort:
-- **NYSE breakpoints only** — prevents micro-cap distortion.
-- Size: median market equity → Small (S) / Big (B).
-- Value: 30th/70th percentile of book-to-market → Growth (G) / Neutral (N) / Value (V).
-- **Value-weighted** returns within each of the 6 intersection portfolios.
-- SMB = (SV + SN + SG)/3 − (BV + BN + BG)/3
-- HML = (SV + BV)/2 − (SG + BG)/2
-
 ## Single-Factor Strategies (Notebook 02)
 
 For each characteristic, form long/short portfolios:
