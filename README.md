@@ -37,20 +37,34 @@ This project uses the **JKP Global Factors** dataset from WRDS. The data file (`
 
 ## Setup
 
+### Local
+
 ```bash
+git clone https://github.com/gunsslashroses/quant-trading-experiments.git
+cd quant-trading-experiments
+
 # Create virtual environment and install
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Or with uv (faster)
-uv venv .venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
+# For ML notebook (04): install ML extras
+pip install -e ".[dev,ml]"
+
+# Place your JKP data file
+cp /path/to/jkp_data.csv data/jkp_data.csv
+
+# Start Jupyter
+pip install jupyterlab
+jupyter lab
 ```
 
-For ML notebooks (04), you'll also need:
-```bash
-pip install tensorflow torch ipca
-```
+### Google Colab
+
+Each notebook includes a setup cell that automatically:
+1. Clones the repo and installs the `quant_trading` package
+2. Mounts Google Drive (for the JKP data file)
+
+Just open any notebook in Colab and run the first cell. Update the `JKP_CSV_PATH` variable in the setup cell to point to your data file on Drive (e.g. `/content/drive/MyDrive/jkp_data.csv`).
 
 ## Notebooks Overview
 
