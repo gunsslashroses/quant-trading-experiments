@@ -64,22 +64,31 @@ All models predict `ret_exc_lead1m_w` (winsorized next-month excess return).
 
 ### Models
 
-1. **Linear Regression** — baseline OLS.
-2. **RBF Kernel Ridge** — Nystroem approximation (300 components) + Ridge regression; captures nonlinearities without O(N³) kernel computation.
-3. **Random Forest** — 100 trees, max depth 6.
-4. **Deep Neural Network** — 2-hidden-layer NN with BatchNorm, Dropout, and L1 regularization. Hyperparameters (L1 strength, learning rate, dropout rate, layer widths) tuned via Optuna with 5-fold temporal CV.
-5. **AdaBoost** — boosted decision trees. Hyperparameters (max_depth, n_estimators, learning_rate) tuned via Optuna with 5-fold temporal CV.
-6. **Max Sharpe Ratio Regression (MSRR)** — linear model trained with custom PyTorch loss that maximizes in-sample portfolio Sharpe ratio.
-7. **IPCA** — Instrumented PCA (Kelly, Pruitt, Su 2019); latent factor model where factor loadings are linear functions of observable characteristics.
+| # | Model | HP Tuning | Search Space |
+|---|-------|-----------|--------------|
+| 1 | **Linear Regression** | — | Baseline OLS, no tuning. |
+| 2 | **RBF Kernel Ridge** | Optuna (80 trials) | `alpha` [1e-2, 1000] log; `gamma` [1e-4, 10] log; `n_components` [100, 500]. Nystroem approximation avoids O(N³) kernel computation. |
+| 3 | **Random Forest** | Optuna (100 trials) | `n_estimators` [50, 500] log; `max_depth` [2, 12]; `min_samples_leaf` [5, 200] log; `max_features` [0.1, 1.0]. |
+| 4 | **Deep Neural Network** | Optuna (50 trials) | `l1_reg` [1e-6, 1e-1] log; `lr` [1e-5, 1e-2] log; `dropout` [0, 0.5]; `units_1` [32, 128]; `units_2` [16, 64]. 2-hidden-layer NN with BatchNorm + Dropout. |
+| 5 | **AdaBoost** | Optuna (100 trials) | `max_depth` [1, 6]; `n_estimators` [50, 1000] log; `learning_rate` [1e-4, 2.0] log. |
+| 6 | **MSRR** | — | Custom PyTorch loss maximizing in-sample portfolio Sharpe ratio. |
+| 7 | **IPCA** | — | 3 latent factors (Kelly, Pruitt, Su 2019). |
 
 ### Hyperparameter Tuning
 
-All tunable models (DNN, AdaBoost) use **Optuna** (Bayesian optimization with the TPE sampler) instead of manual grid search. This is the modern best practice because:
-- The TPE sampler builds a probabilistic model of which HP regions produce good scores, and focuses subsequent trials on the most promising regions — the same concept as iterative coarse-to-fine refinement, but automatic and principled.
-- Mixed parameter types (log-scale floats, integers, categoricals) are handled natively.
-- The search is reproducible via a seeded sampler.
+All tunable models (RBF Kernel Ridge, Random Forest, DNN, AdaBoost) use **Optuna** — a Bayesian optimization framework using the TPE (Tree-structured Parzen Estimator) sampler (Akiba et al., 2019). This replaces the original manual coarse-to-fine grid search and is the modern best practice because:
 
-Cross-validation for all HP tuning uses `TimeSeriesSplit(n_splits=5)` to prevent look-ahead bias. The final model is trained with a **temporal validation split** (first 80% of training data for fitting, last 20% for early stopping) — never a random split.
+- **Sample-efficient**: TPE builds a probabilistic model of which HP regions produce good scores, and focuses subsequent trials on the most promising regions — the same concept as iterative coarse-to-fine refinement, but automatic and principled.
+- **Mixed parameter types**: log-scale floats, integers, and categoricals are handled natively with correct spacing.
+- **Reproducible**: seeded TPE sampler gives deterministic trial sequences.
+
+Cross-validation for all HP tuning uses `TimeSeriesSplit(n_splits=5)` to prevent look-ahead bias. For the DNN, the final model is trained with a **temporal validation split** (first 80% of training data for fitting, last 20% for early stopping) — never a random split.
+
+> **Reference**: Akiba, T., Sano, S., Yanase, T., Ohta, T., & Koyama, M. (2019).
+> *Optuna: A Next-generation Hyperparameter Optimization Framework*.
+> Proceedings of the 25th ACM SIGKDD International Conference on Knowledge
+> Discovery & Data Mining (KDD), 2623–2631.
+> [https://doi.org/10.1145/3292500.3330701](https://doi.org/10.1145/3292500.3330701)
 
 ### Portfolio Evaluation
 Each model's predictions are used to sort stocks into long/short portfolios. Evaluated across multiple percentile/weight-scheme configurations.

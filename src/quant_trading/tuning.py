@@ -20,6 +20,13 @@ Why Optuna over manual grid search (coarse-to-fine):
    decides where to evaluate next.
 4. **Reproducible**: seeded TPE sampler gives deterministic trial sequences.
 
+Reference:
+    Akiba, T., Sano, S., Yanase, T., Ohta, T., & Koyama, M. (2019).
+    Optuna: A Next-generation Hyperparameter Optimization Framework.
+    Proceedings of the 25th ACM SIGKDD International Conference on
+    Knowledge Discovery & Data Mining (KDD), 2623-2631.
+    https://doi.org/10.1145/3292500.3330701
+
 Usage pattern (sklearn)::
 
     def objective(trial):

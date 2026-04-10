@@ -64,13 +64,13 @@ Three ways to combine all 13 signals:
 - **M3 (IC-Weighted Composite)**: rolling-IC weights → best Sharpe ~1.49
 
 ### 04 — ML Return Prediction
-Seven models trained on 1970–2015, tested 2016+. DNN and AdaBoost use **Optuna** (Bayesian optimization with TPE sampler) for hyperparameter tuning with 5-fold temporal cross-validation. See `quant_trading.tuning` for the reusable tuning functions.
+Seven models trained on 1970–2015, tested 2016+. Four tunable models use **[Optuna](https://doi.org/10.1145/3292500.3330701)** (Bayesian optimization with TPE sampler) for hyperparameter tuning with 5-fold temporal cross-validation. See `quant_trading.tuning` for the reusable tuning functions.
 
 | Model | HP Tuning | OOS R² | Best Portfolio Sharpe |
 |-------|-----------|--------|-----------------------|
 | Linear Regression | — | 0.004 | 3.39 |
-| RBF Kernel Ridge | GridSearchCV | 0.005 | 5.20 |
-| Random Forest | Fixed | 0.007 | 6.25 |
+| RBF Kernel Ridge | Optuna (80 trials) | 0.005 | 5.20 |
+| Random Forest | Optuna (100 trials) | 0.007 | 6.25 |
 | Deep Neural Network | Optuna (50 trials) | — | — |
 | AdaBoost | Optuna (100 trials) | — | — |
 | Max Sharpe Regression | — | — | — |
