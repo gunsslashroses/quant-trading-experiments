@@ -32,27 +32,56 @@ This is a defensive workaround. A better approach would be to investigate why th
 
 Column `iid` has mixed types (some numeric, some string like "01"). Fix by specifying `dtype={"iid": str}` in the read_csv call, or by using `low_memory=False`.
 
-### 5. DNN model: potential GPU memory issues
+### 5. DNN: multiple hyperparameter tuning issues (FIXED)
 **Location**: Notebook 04, DNN section.
 
-The code manually calls `keras.backend.clear_session()` and `gc.collect()` between CV folds to prevent GPU OOM. This is good practice, but the notebook doesn't set a GPU memory growth limit, which could still cause issues on shared GPU environments. Consider adding:
-```python
-gpus = tf.config.experimental.list_physical_devices('GPU')
-for gpu in gpus:
-    tf.config.experimental.set_memory_growth(gpu, True)
-```
+**5a. Look-ahead bias in final training validation split.**
+The original code used `validation_split=0.2` in `model.fit()`. Keras implements this as a random split of the last 20% of the *shuffled* data. For time-series panel data, this leaks future information into the validation set. **Fixed**: explicit temporal split — first 80% of training data for fitting, last 20% (chronologically) for early stopping.
 
-### 6. MSRR loss function: simplified portfolio simulation
+**5b. Only L1 regularization was tuned.**
+Learning rate was left at Adam's default (1e-3). In practice, the L1–LR interaction is strong: high L1 with high LR can zero out weights too aggressively, while low L1 with low LR may underfit. **Fixed**: joint grid search over L1 × learning rate.
+
+**5c. Only 10 epochs during CV search.**
+With `batch_size=2048` on datasets of ~50k–500k rows, each epoch has very few gradient steps (e.g., 50k/2048 ≈ 24 steps). 10 epochs = ~240 steps total — the model barely starts learning. **Fixed**: 50 epochs during CV, 200 during final training, with early stopping patience=10–15.
+
+**5d. batch_size=2048 too large.**
+Reduces the number of weight updates per epoch and can hurt generalization. **Fixed**: batch_size=512.
+
+**5e. L1 regularization on biases.**
+`bias_regularizer=regularizers.L1(l1=1e-05)` pushes biases toward zero. This is harmful for BatchNormalization layers (which rely on learned bias-like parameters) and for the output layer's intercept. It's also unusual practice. **Fixed**: removed bias regularization, added Dropout instead.
+
+**5f. Only 2 CV folds.**
+TimeSeriesSplit(n_splits=2) gives high variance in HP estimates. **Fixed**: 5 folds.
+
+**5g. GPU memory.**
+The original code doesn't set GPU memory growth limits. On shared environments this can cause OOM crashes. Consider adding `tf.config.experimental.set_memory_growth(gpu, True)`.
+
+### 6. AdaBoost: hyperparameter tuning issues (FIXED)
+**Location**: Notebook 04, AdaBoost section.
+
+**6a. Coarse grid too narrow.**
+Only searched `max_depth=[1,2]` and `n_estimators=[10,50,100]`. For cross-sectional return prediction with ~50 features, depth 3–4 and 200–500 estimators are often better. **Fixed**: depth [1–4], n_estimators [50–500].
+
+**6b. Fine grid used fixed additive steps.**
+`n_estimators ± 20` and `learning_rate * {0.5, 1.0, 2.0}` is a mismatch: n_estimators uses additive steps while learning_rate uses multiplicative. If coarse best was n_estimators=100, the fine grid [80, 100, 120] is reasonable. But if coarse best was n_estimators=10, the fine grid [-10, 10, 30] is broken (negative values). **Fixed**: proportional int steps for n_estimators, geometric steps for learning_rate.
+
+**6c. Fine search froze max_depth.**
+The fine grid only searched the coarse-best depth, missing better depth±1 combinations. **Fixed**: depth ±1 in fine grid.
+
+**6d. Only 2 CV folds.**
+Same issue as DNN. **Fixed**: 5-fold TimeSeriesSplit via `iterative_grid_search`.
+
+### 7. MSRR loss function: simplified portfolio simulation
 **Location**: Notebook 04, MSRR section.
 
 The Sharpe loss function approximates portfolio returns as `predictions * targets`. This is a simplified proxy — in reality, returns should be based on ranked/sorted positions. The approximation assumes that prediction magnitude is proportional to position sizing, which may not hold. The model is still useful for learning directional signals, but the in-sample Sharpe from this loss is not directly comparable to the portfolio Sharpe from sorted-decile evaluation.
 
-### 7. AdaBoost uses `estimator` parameter (sklearn ≥1.2)
+### 8. AdaBoost uses `estimator` parameter (sklearn ≥1.2)
 **Location**: Notebook 04, AdaBoost section.
 
 The code correctly uses `estimator=` instead of the deprecated `base_estimator=`. This is compatible with scikit-learn ≥1.2.
 
-### 8. IPCA predict with `mean_factor=True`
+### 9. IPCA predict with `mean_factor=True`
 **Location**: Notebook 04, IPCA section.
 
 Using `mean_factor=True` for OOS prediction means the model assumes the latent factors in the test period equal their historical average. This is a conservative assumption — in practice, you might want to estimate factors using the most recent data point.
