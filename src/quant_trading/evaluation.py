@@ -10,15 +10,28 @@ import numpy as np
 import pandas as pd
 
 
-def perf_stats_annualized(rets: pd.Series, freq: int = 12) -> pd.Series:
+def perf_stats_annualized(
+    rets: pd.Series,
+    freq: int = 12,
+    rf: pd.Series | float = 0.0,
+) -> pd.Series:
     """Compute annualized performance statistics for a return series.
 
     Parameters
     ----------
     rets : pd.Series
-        Periodic (typically monthly) returns.
+        Periodic (typically monthly) returns. For long-short spread
+        returns or excess returns, pass ``rf=0`` (default). For raw
+        (total) returns on a single portfolio, pass the matching
+        risk-free rate series or a scalar annual rate.
     freq : int
         Periods per year (12 for monthly).
+    rf : pd.Series or float
+        Risk-free rate to subtract for Sharpe calculation.
+        - If 0.0 (default): assumes *rets* are already excess returns
+          or a zero-cost long-short spread.
+        - If a float: treated as a constant annualized Rf.
+        - If a Series: periodic Rf aligned to *rets* (same frequency).
 
     Returns
     -------
@@ -39,7 +52,15 @@ def perf_stats_annualized(rets: pd.Series, freq: int = 12) -> pd.Series:
 
     ann_return = (1 + rets).prod() ** (freq / len(rets)) - 1
     ann_vol = rets.std(ddof=1) * np.sqrt(freq)
-    sharpe = ann_return / ann_vol if ann_vol != 0 else np.nan
+
+    # Sharpe ratio: (annualized return - annualized Rf) / annualized vol
+    if isinstance(rf, (int, float)):
+        ann_rf = float(rf)
+    else:
+        rf_aligned = rf.reindex(rets.index).dropna()
+        ann_rf = (1 + rf_aligned).prod() ** (freq / len(rf_aligned)) - 1
+
+    sharpe = (ann_return - ann_rf) / ann_vol if ann_vol != 0 else np.nan
 
     cum = (1 + rets).cumprod()
     max_dd = (cum / cum.cummax() - 1).min()
