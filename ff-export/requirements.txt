@@ -1,7 +1,0 @@
-pandas
-numpy
-matplotlib
-wrds
-pandas-datareader
-scipy
-statsmodels

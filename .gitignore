@@ -21,5 +21,4 @@ step3_checkpoints/
 
 # Output
 *.png
-*.csv
-fama-french-factor-replication/
+*.csvfama-french-factor-replication/
