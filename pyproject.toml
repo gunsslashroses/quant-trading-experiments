@@ -1,12 +1,19 @@
 [project]
-name = "quant-trading-experiments"
+name = "fama-french-portfolio-replication"
 version = "0.1.0"
-description = "Quantitative trading strategy experiments and backtesting"
-requires-python = ">=3.12"
+description = "Replication of Fama-French SMB and HML portfolios from WRDS/JKP data"
+requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "pandas",
     "matplotlib",
+    "seaborn",
+    "pandas-datareader",
+    "tqdm",
+    "plotly",
+    "scikit-learn",
+    "optuna",
+    "statsmodels",
 ]
 
 [project.optional-dependencies]
@@ -14,10 +21,15 @@ dev = [
     "pytest",
     "ruff",
 ]
+ml = [
+    "tensorflow",
+    "torch",
+    "ipca",
+]
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]

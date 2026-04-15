@@ -10,6 +10,15 @@ build/
 .vscode/
 .idea/
 
+# Data (large files — not tracked)
+data/*.csv
+data/*.pkl
+data/*.parquet
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+step3_checkpoints/
+
 # Output
 *.png
 *.csv
