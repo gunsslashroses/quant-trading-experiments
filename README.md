@@ -80,6 +80,8 @@ Three ways to combine all 13 signals:
 ### 04 — ML Return Prediction
 Seven models trained on 1970–2015, tested 2016+. Four tunable models use **[Optuna](https://doi.org/10.1145/3292500.3330701)** (Bayesian optimization with TPE sampler) for hyperparameter tuning with 5-fold temporal cross-validation. See `quant_trading.tuning` for the reusable tuning functions.
 
+The notebook includes a **detailed background section** explaining the RBF kernel, Nystrom approximation, Ridge regression pipeline, and how Optuna compares to grid search — with intuition and mental models for each concept.
+
 | Model | HP Tuning | OOS R² | Best Portfolio Sharpe |
 |-------|-----------|--------|-----------------------|
 | Linear Regression | — | 0.004 | 3.39 |
