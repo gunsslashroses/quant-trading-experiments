@@ -1,106 +1,160 @@
-# Quant Trading Experiments
+# Fama-French Portfolio Replication
 
-Systematic exploration of cross-sectional equity return predictability using factor models, signal combination methods, and machine learning.
+Public, explanation-first replication of the classic Fama-French 2x3 portfolio
+sorts that produce **SMB (Small Minus Big)** and **HML (High Minus Low)**.
 
-## Project Structure
+The repository is built to answer two questions clearly:
 
+1. **How did Fama and French actually form their portfolios?**
+2. **How close can we get using a modern WRDS stock-level dataset rather than
+   hand-built CRSP/Compustat merges?**
+
+The main walkthrough lives in `notebooks/05_ff_factor_replication.ipynb`. The
+reusable logic lives in `src/quant_trading/factors.py`.
+
+## What this repo does
+
+The replication follows the canonical Fama-French design:
+
+- keep US common stocks on NYSE, AMEX, and NASDAQ,
+- compute **NYSE-only** June breakpoints,
+- split stocks into **2 size buckets** and **3 book-to-market buckets**,
+- value-weight the six portfolios,
+- form
+  - `SMB = (SH + SM + SL) / 3 - (BH + BM + BL) / 3`
+  - `HML = (SH + BH) / 2 - (SL + BL) / 2`
+- compare the reconstructed factors with the official Ken French data library.
+
+The notebook is intentionally teaching-oriented: every major code block is tied
+back to the economic logic in Fama and French rather than presented as a black
+box.
+
+## Dataset
+
+This project uses the **Jensen, Kelly, and Pedersen (2023) global factor
+dataset** on WRDS (`contrib.global_factor`), filtered to US stocks.
+
+Why this dataset:
+
+- it is **stock-level**, so we can recreate the underlying sorts rather than
+  only download finished factor returns;
+- it already contains key firm characteristics such as `market_equity` and
+  `be_me`;
+- it is standardized and documented, which makes the repo easier to share and
+  easier for reviewers to understand.
+
+Why it is still only an approximation:
+
+- the official Fama-French factors are built from CRSP and Compustat with
+  specific accounting conventions and share-class aggregation rules;
+- JKP gives us harmonized proxies for those inputs, not the exact original
+  pipeline;
+- the repo therefore aims for a **credible replication**, not a byte-for-byte
+  clone.
+
+The raw CSV is not committed because WRDS data is licensed. Put your extract at
+`data/jkp_data.csv`.
+
+## Why these columns
+
+The replication only needs a small subset of the JKP table:
+
+- `id`: stock identifier used to track a security through time,
+- `month_date` / `eom`: month-end observation date,
+- `primary_sec`: keeps the primary security for each firm,
+- `exch_main`: exchange code so we can isolate NYSE for breakpoints,
+- `source_crsp`: keeps the CRSP-backed observations,
+- `market_equity`: size signal and value-weighting variable,
+- `be_me`: book-to-market signal for value sorts,
+- `ret_exc_lead1m`: next-month excess return used to measure portfolio returns.
+
+That is deliberate: a public repo is easier to audit when the data inputs are
+minimal and explicit.
+
+## Repo map
+
+```text
+src/quant_trading/factors.py              FF replication pipeline
+notebooks/05_ff_factor_replication.ipynb  Explanation-first walkthrough
+tests/test_factors.py                     Unit tests for timing and formulas
+data/README.md                            Data instructions
 ```
-├── src/quant_trading/        # Reusable library modules
-│   ├── data.py               # Data loading, cleaning, winsorization, feature prep
-│   ├── factors.py            # FF factor download & comparison utilities
-│   ├── signals.py            # Signal generation, scaling, IC weights
-│   ├── portfolio.py          # Portfolio return engines (classic + generalized)
-│   ├── strategies.py         # High-level strategy runners (M1/M2/M3)
-│   ├── tuning.py             # Optuna-based Bayesian HP tuning (DNN, AdaBoost, etc.)
-│   ├── evaluation.py         # Performance metrics, OOS R², decile analysis
-│   └── plotting.py           # Visualization helpers
-│
-├── notebooks/                # Exploratory analysis (run in order)
-│   ├── 02_single_factor_strategies.ipynb # 832-config grid search across 13 chars
-│   ├── 03_combined_signal_methods.ipynb  # Consensus / Composite / IC-weighted
-│   └── 04_ml_return_prediction.ipynb     # 7 ML models for return prediction
-│
-├── tests/                    # Unit tests for library modules
-├── data/                     # Data files (not tracked in git)
-├── docs/                     # Extended documentation
-│   ├── METHODOLOGY.md        # Detailed methodology notes
-│   └── CODE_REVIEW.md        # Code review notes and known issues
-└── pyproject.toml            # Project config & dependencies
-```
 
-## Data
+## Methodology choices
 
-This project uses the **JKP Global Factors** dataset from WRDS. The data file (`jkp_data.csv`) is not included in the repository due to licensing. To use:
+### 1. Universe filters
 
-1. Download from WRDS using the SQL query in `quant_trading.data.JKP_SQL_TEMPLATE`
-2. Save as `data/jkp_data.csv`
+The notebook keeps primary securities, major exchanges, positive market equity,
+and positive book-to-market. This mirrors the spirit of the original filters:
+remove obvious non-common-share noise before sorting.
+
+### 2. NYSE breakpoints
+
+This is one of the most important design choices in the whole repo. If you use
+all exchanges to set breakpoints, the large mass of tiny NASDAQ firms can move
+the cutoffs materially. Fama and French use **NYSE-only** breakpoints to keep
+the size and value partitions anchored to a stable reference market.
+
+### 3. June rebalancing
+
+Fama and French rebalance once per year in June. The reason is accounting-data
+timing: book equity comes from annual statements, so the sorts should not peek
+into information that would not have been available at the portfolio formation
+date.
+
+### 4. Lead-return timing
+
+The JKP return column in this repo is `ret_exc_lead1m`, meaning the return from
+month `t` to `t+1` is stored on the row dated `t`. That is convenient, but it
+creates an easy off-by-one trap. The implementation in `factors.py` explicitly
+maps **June month-dated rows to the current sort year**, because those rows
+already contain the July realized return.
+
+### 5. Expected differences vs. the official factors
+
+Do not expect a perfect match. The most important differences are:
+
+- book equity is proxied through JKP's `be_me`,
+- market equity aggregation is not the exact Ken French share-class procedure,
+- delisting handling differs,
+- within-year weight updating differs from the original CRSP implementation.
+
+Good replications should still show strong co-movement, especially for SMB.
 
 ## Setup
 
-### Local
-
 ```bash
-git clone https://github.com/gunsslashroses/quant-trading-experiments.git
-cd quant-trading-experiments
-
-# Create virtual environment and install
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-
-# For ML notebook (04): install ML extras
-pip install -e ".[dev,ml]"
-
-# Place your JKP data file
+python -m venv .venv
+source .venv/bin/activate
+export PATH="$HOME/.local/bin:$PATH"
+uv pip install -e ".[dev]"
 cp /path/to/jkp_data.csv data/jkp_data.csv
-
-# Start Jupyter
-pip install jupyterlab
-jupyter lab
 ```
 
-### Google Colab
-
-Each notebook includes a setup cell that automatically:
-1. Clones the repo and installs the `quant_trading` package
-2. Mounts Google Drive (for the JKP data file)
-
-Just open any notebook in Colab and run the first cell. Update the `JKP_CSV_PATH` variable in the setup cell to point to your data file on Drive (e.g. `/content/drive/MyDrive/jkp_data.csv`).
-
-## Notebooks Overview
-
-### 02 — Single-Factor Strategies
-Grid search across **832 configurations**: 13 characteristics × 4 percentile pairs × 4 weight schemes × 4 max-weight caps. Top strategies ranked by Sharpe ratio. Key finding: short-term reversal (`ret_1_0`) dominates with Sharpe ~3.4.
-
-### 03 — Combined Signal Methods
-Three ways to combine all 13 signals:
-- **M1 (Consensus Voting)**: n-out-of-13 threshold → best Sharpe ~0.96
-- **M2 (Equal-Weight Composite)**: rank-scaled signals → best Sharpe ~1.91
-- **M3 (IC-Weighted Composite)**: rolling-IC weights → best Sharpe ~1.49
-
-### 04 — ML Return Prediction
-Seven models trained on 1970–2015, tested 2016+. Four tunable models use **[Optuna](https://doi.org/10.1145/3292500.3330701)** (Bayesian optimization with TPE sampler) for hyperparameter tuning with 5-fold temporal cross-validation. See `quant_trading.tuning` for the reusable tuning functions.
-
-The notebook includes a **detailed background section** explaining the RBF kernel, Nystrom approximation, Ridge regression pipeline, and how Optuna compares to grid search — with intuition and mental models for each concept.
-
-| Model | HP Tuning | OOS R² | Best Portfolio Sharpe |
-|-------|-----------|--------|-----------------------|
-| Linear Regression | — | 0.004 | 3.39 |
-| RBF Kernel Ridge | Optuna (80 trials) | 0.005 | 5.20 |
-| Random Forest | Optuna (100 trials) | 0.007 | 6.25 |
-| Deep Neural Network | Optuna (50 trials) | — | — |
-| AdaBoost | Optuna (100 trials) | — | — |
-| Max Sharpe Regression | — | — | — |
-| IPCA | — | 0.004 | 3.33 |
-
-## Running Tests
+## Run the notebook
 
 ```bash
-pytest tests/ -v
+source .venv/bin/activate
+jupyter lab notebooks/05_ff_factor_replication.ipynb
 ```
 
-## Linting
+The notebook automatically downloads the official Fama-French monthly factors
+through `pandas_datareader` for the comparison step.
+
+## Run tests
 
 ```bash
-ruff check src/ tests/
-ruff format --check src/ tests/
+source .venv/bin/activate
+pytest tests/test_factors.py -v
+ruff check src/quant_trading/factors.py tests/test_factors.py
 ```
+
+## References
+
+- Fama, Eugene F., and Kenneth R. French (1992). *The Cross-Section of Expected
+  Stock Returns*.
+- Fama, Eugene F., and Kenneth R. French (1993). *Common Risk Factors in the
+  Returns on Stocks and Bonds*.
+- Jensen, Theis I., Bryan T. Kelly, and Lasse H. Pedersen (2023). *Is There a
+  Replication Crisis in Finance?*
+- Ken French Data Library: `F-F_Research_Data_5_Factors_2x3`.

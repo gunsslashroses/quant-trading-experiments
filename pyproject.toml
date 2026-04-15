@@ -1,7 +1,7 @@
 [project]
-name = "quant-trading-experiments"
+name = "fama-french-portfolio-replication"
 version = "0.1.0"
-description = "Quantitative trading: factor models, signal combination, and ML prediction"
+description = "Replication of Fama-French SMB and HML portfolios from WRDS/JKP data"
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
