@@ -66,7 +66,7 @@ def calculate_portfolio_returns(
         active["raw_weight"] = active[weight_col]
 
     elif weight_scheme == "char_rank_weighted" and char_col is not None:
-        ranks = active.groupby("month_date")[char_col].rank(pct=True)
+        ranks = active.groupby(["month_date", "position"])[char_col].rank(pct=True)
         if long_high:
             intensity = np.where(active["position"] == 1.0, ranks, 1.0 - ranks)
         else:
@@ -75,8 +75,8 @@ def calculate_portfolio_returns(
 
     elif weight_scheme == "char_minmax_weighted" and char_col is not None:
         x = active[char_col]
-        x_min = active.groupby("month_date")[char_col].transform("min")
-        x_max = active.groupby("month_date")[char_col].transform("max")
+        x_min = active.groupby(["month_date", "position"])[char_col].transform("min")
+        x_max = active.groupby(["month_date", "position"])[char_col].transform("max")
         scaled = (x - x_min) / (x_max - x_min + 1e-8)
         if long_high:
             intensity = np.where(active["position"] == 1.0, scaled, 1.0 - scaled)
