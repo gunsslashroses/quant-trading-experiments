@@ -19,6 +19,58 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 
 
+def _apply_leg_cap_with_fallback(norm_w: pd.Series, cap: float) -> pd.Series:
+    """Apply a per-name cap while keeping each leg fully invested."""
+    w = norm_w.to_numpy().astype(float)
+    n = len(w)
+    if n == 0:
+        return norm_w
+
+    if cap * n < 1.0:
+        w_clipped = np.minimum(w, cap)
+        s = w_clipped.sum()
+        if s > 0:
+            w_final = w_clipped / s
+        else:
+            w_final = np.full_like(w, 1.0 / n)
+        return pd.Series(w_final, index=norm_w.index)
+
+    w_current = w.copy()
+    capped = np.zeros(n, dtype=bool)
+
+    for _ in range(10):
+        over = w_current > cap + 1e-12
+        if not over.any():
+            break
+
+        excess = w_current[over] - cap
+        w_current[over] = cap
+        capped |= over
+
+        total_excess = excess.sum()
+        if total_excess <= 0:
+            break
+
+        alloc_mask = ~capped
+        if not alloc_mask.any():
+            break
+
+        w_alloc = w_current[alloc_mask]
+        s_alloc = w_alloc.sum()
+        if s_alloc <= 0:
+            w_current[alloc_mask] = total_excess / alloc_mask.sum()
+        else:
+            w_current[alloc_mask] = w_alloc + (w_alloc / s_alloc) * total_excess
+
+    s_final = w_current.sum()
+    if s_final > 0:
+        w_current /= s_final
+    else:
+        w_current = np.full_like(w_current, 1.0 / n)
+
+    return pd.Series(w_current, index=norm_w.index)
+
+
 def calculate_portfolio_returns(
     positions: pd.DataFrame,
     data: pd.DataFrame,
@@ -43,12 +95,9 @@ def calculate_portfolio_returns(
         One of ``equal``, ``value``, ``char_rank_weighted``,
         ``char_minmax_weighted``.
     max_weight_per_leg : float or None
-        Cap each stock's weight within a leg and renormalize.
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns ``Long``, ``Short``, ``Spread`` indexed by ``month_date``.
+        Per-name cap for each leg. If the cap is feasible for a fully
+        invested leg, enforce it via iterative clip-and-redistribute.
+        Otherwise, clip once and renormalize.
     """
     merged = pd.merge(positions, data, on=["id", "month_date"], how="left")
     active = merged[(merged["position"] == 1.0) | (merged["position"] == -1.0)].copy()
@@ -97,11 +146,9 @@ def calculate_portfolio_returns(
     # Optional per-name cap
     if max_weight_per_leg is not None:
         cap = float(max_weight_per_leg)
-        active["norm_w_capped"] = active.groupby(["month_date", "position"])["norm_w"].transform(
-            lambda w: np.minimum(w, cap)
+        active["norm_w_final"] = active.groupby(["month_date", "position"])["norm_w"].transform(
+            lambda w: _apply_leg_cap_with_fallback(w, cap)
         )
-        sums = active.groupby(["month_date", "position"])["norm_w_capped"].transform("sum")
-        active["norm_w_final"] = active["norm_w_capped"] / sums
     else:
         active["norm_w_final"] = active["norm_w"]
 
