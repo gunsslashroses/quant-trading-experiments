@@ -115,7 +115,7 @@ def calculate_portfolio_returns(
         active["raw_weight"] = active[weight_col]
 
     elif weight_scheme == "char_rank_weighted" and char_col is not None:
-        ranks = active.groupby(["month_date", "position"])[char_col].rank(pct=True)
+        ranks = active.groupby(["month_date"])[char_col].rank(pct=True)
         if long_high:
             intensity = np.where(active["position"] == 1.0, ranks, 1.0 - ranks)
         else:
@@ -124,8 +124,8 @@ def calculate_portfolio_returns(
 
     elif weight_scheme == "char_minmax_weighted" and char_col is not None:
         x = active[char_col]
-        x_min = active.groupby(["month_date", "position"])[char_col].transform("min")
-        x_max = active.groupby(["month_date", "position"])[char_col].transform("max")
+        x_min = active.groupby(["month_date"])[char_col].transform("min")
+        x_max = active.groupby(["month_date"])[char_col].transform("max")
         scaled = (x - x_min) / (x_max - x_min + 1e-8)
         if long_high:
             intensity = np.where(active["position"] == 1.0, scaled, 1.0 - scaled)
@@ -146,16 +146,16 @@ def calculate_portfolio_returns(
     # Optional per-name cap
     if max_weight_per_leg is not None:
         cap = float(max_weight_per_leg)
-        active["norm_w_final"] = active.groupby(["month_date", "position"])["norm_w"].transform(
-            lambda w: _apply_leg_cap_with_fallback(w, cap)
-        )
+        active['norm_w_capped'] = active.groupby(['month_date', 'position'])['norm_w'].transform(lambda w: np.minimum(w, cap))
+        sums = active.groupby(['month_date', 'position'])['norm_w_capped'].transform('sum')
+        active['norm_w_final'] = active['norm_w_capped'] / sums
     else:
-        active["norm_w_final"] = active["norm_w"]
+        active['norm_w_final'] = active['norm_w']
 
-    active["w_ret"] = active["norm_w_final"] * active[ret_col]
-    leg_rets = active.groupby(["month_date", "position"])["w_ret"].sum().unstack()
-    leg_rets = leg_rets.rename(columns={1.0: "Long", -1.0: "Short"})
-    leg_rets["Spread"] = leg_rets["Long"] - leg_rets["Short"]
+    active['w_ret'] = active['norm_w_final'] * active[ret_col]
+    leg_rets = active.groupby(['month_date', 'position'])['w_ret'].sum().unstack()
+    leg_rets = leg_rets.rename(columns={1.0: 'Long', -1.0: 'Short'})
+    leg_rets['Spread'] = leg_rets['Long'] - leg_rets['Short']
     return leg_rets
 
 
