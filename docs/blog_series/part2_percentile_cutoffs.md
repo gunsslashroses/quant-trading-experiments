@@ -26,19 +26,19 @@ Conceptually this is a trade-off between signal strength and diversification. Mo
 
 | Characteristic | 1/99 | 5/95 | 10/90 | 30/70 |
 |---------------|------|------|-------|-------|
-| **market_equity** | 1.97 | **2.17** | 1.43 | 0.78 |
-| **ret_1_0** | **2.15** | 1.59 | 1.18 | 0.82 |
-| **dbnetis_at** | 0.57 | 1.25 | **1.35** | 1.20 |
-| **at_gr1** | 0.97 | **1.12** | 1.10 | 0.86 |
-| **niq_at_chg1** | 0.40 | 0.64 | 0.85 | **1.04** |
-| **oaccruals_at** | 0.62 | 0.94 | 1.00 | **1.03** |
-| **be_me** | **0.90** | 0.75 | 0.63 | 0.57 |
-| **op_at** | 0.21 | 0.41 | 0.45 | **0.64** |
-| **ret_6_1** | -0.27 | 0.17 | 0.31 | **0.33** |
-| **debt_at** | -0.41 | 0.13 | **0.29** | 0.22 |
-| **qmj** | 0.09 | 0.20 | **0.28** | 0.22 |
-| **beta_60m** | **0.25** | -0.17 | -0.17 | -0.16 |
-| **ni_be** | 0.01 | **0.07** | 0.02 | 0.03 |
+| **Size (Market Equity)** | 1.97 | **2.17** | 1.43 | 0.78 |
+| **Short-Term Reversal** | **2.15** | 1.59 | 1.18 | 0.82 |
+| **Net Debt Issuance** | 0.57 | 1.25 | **1.35** | 1.20 |
+| **Investment (Asset Growth)** | 0.97 | **1.12** | 1.10 | 0.86 |
+| **Profit Growth** | 0.40 | 0.64 | 0.85 | **1.04** |
+| **Accruals** | 0.62 | 0.94 | 1.00 | **1.03** |
+| **Value (Book-to-Market)** | **0.90** | 0.75 | 0.63 | 0.57 |
+| **Profitability (Op. Prof.)** | 0.21 | 0.41 | 0.45 | **0.64** |
+| **Momentum (6-1)** | -0.27 | 0.17 | 0.31 | **0.33** |
+| **Leverage (Debt/Assets)** | -0.41 | 0.13 | **0.29** | 0.22 |
+| **Quality Minus Junk** | 0.09 | 0.20 | **0.28** | 0.22 |
+| **Beta (60m)** | **0.25** | -0.17 | -0.17 | -0.16 |
+| **ROE (NI/Book Equity)** | 0.01 | **0.07** | 0.02 | 0.03 |
 
 The heatmap reveals a striking pattern: **10 out of 13 signals get worse when you push from 5/95 to the extreme 1/99.** The average Sharpe drop is 0.23 — that is not a rounding error. The diversification cost of holding too few names overwhelms whatever extra signal strength the extremes offer.
 
@@ -87,14 +87,14 @@ The three signals that improve at 1/99 share a common trait: **the characteristi
 
 | Characteristic | 1/99 | 5/95 | 10/90 | 30/70 |
 |---------------|------|------|-------|-------|
-| market_equity | -27.7% | -52.3% | -66.3% | -51.9% |
-| ret_1_0 | -39.7% | -58.9% | -59.5% | -41.9% |
-| dbnetis_at | -52.5% | -16.8% | -19.7% | -13.4% |
-| at_gr1 | -66.4% | -46.2% | -36.0% | -26.5% |
-| be_me | -78.2% | -69.1% | -69.6% | -60.3% |
-| op_at | -93.7% | -81.2% | -73.4% | -35.1% |
-| ret_6_1 | -100.0% | -95.8% | -73.7% | -50.2% |
-| beta_60m | -96.7% | -99.8% | -99.4% | -95.3% |
+| Size (Market Equity) | -27.7% | -52.3% | -66.3% | -51.9% |
+| Short-Term Reversal | -39.7% | -58.9% | -59.5% | -41.9% |
+| Net Debt Issuance | -52.5% | -16.8% | -19.7% | -13.4% |
+| Investment (Asset Growth) | -66.4% | -46.2% | -36.0% | -26.5% |
+| Value (Book-to-Market) | -78.2% | -69.1% | -69.6% | -60.3% |
+| Profitability (Op. Prof.) | -93.7% | -81.2% | -73.4% | -35.1% |
+| Momentum (6-1) | -100.0% | -95.8% | -73.7% | -50.2% |
+| Beta (60m) | -96.7% | -99.8% | -99.4% | -95.3% |
 
 Look at the last column. At 30/70, no signal has worse than -95% drawdown. But at 1/99, several signals produce **complete wipeouts** — momentum (`ret_6_1`) and quality (`qmj`) both hit -100% max drawdown. These are not theoretical risks. The 2009 momentum crash and the COVID liquidity squeeze are in this sample.
 
