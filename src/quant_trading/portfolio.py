@@ -146,7 +146,10 @@ def calculate_portfolio_returns(
     # Optional per-name cap
     if max_weight_per_leg is not None:
         cap = float(max_weight_per_leg)
-        active['norm_w_capped'] = active.groupby(['month_date', 'position'])['norm_w'].transform(lambda w: np.minimum(w, cap))
+        active['norm_w_capped'] = (
+            active.groupby(['month_date', 'position'])['norm_w']
+            .transform(lambda w: np.minimum(w, cap))
+        )
         sums = active.groupby(['month_date', 'position'])['norm_w_capped'].transform('sum')
         active['norm_w_final'] = active['norm_w_capped'] / sums
     else:
