@@ -40,31 +40,46 @@ Conceptually this is a trade-off between signal strength and diversification. Mo
 | **beta_60m** | **0.25** | -0.17 | -0.17 | -0.16 |
 | **ni_be** | 0.01 | **0.07** | 0.02 | 0.03 |
 
-The heatmap confirms our hypothesis but with an important nuance. The trade-off between signal strength and diversification does not resolve the same way across signals. There is no common optimum. Each characteristic has its own sweet spot, and the drawdown column tells us just as much as the Sharpe ratio does.
+The heatmap reveals a striking pattern: **10 out of 13 signals get worse when you push from 5/95 to the extreme 1/99.** The average Sharpe drop is 0.23 — that is not a rounding error. The diversification cost of holding too few names overwhelms whatever extra signal strength the extremes offer.
 
-I see three distinct groups.
+Only 3 signals out of 13 improve at 1/99. And each of the three exceptions has a specific reason for why it works differently.
 
-## Group 1: Signals that reward extreme bets
+This is the central result of this post. Let me walk through it.
 
-**Size** (`market_equity`) peaks at 5/95 with a Sharpe of 2.17 — the highest single number in the entire heatmap. Going wider to 10/90 drops it to 1.43, and 30/70 falls to 0.78. The size premium concentrates in the smallest stocks. Diluting the portfolio with mid-caps weakens it.
+## The general pattern: 5/95 is the sweet spot, 1/99 destroys value
 
-**Value** (`be_me`) is similar: 0.90 at 1/99, declining monotonically to 0.57 at 30/70. The cheapest stocks really do outperform, and the relationship gets weaker as you include less extreme values.
+For the majority of signals — investment, debt issuance, accruals, profit growth, profitability, momentum, leverage, quality, size, ROE — the Sharpe ratio peaks somewhere in the 5/95 to 30/70 range and then **declines** at 1/99.
 
-## Group 2: Short-term reversal is the one exception
+Some examples:
 
-**Short-term reversal** (`ret_1_0`) is the only signal where both Sharpe and drawdown improve together as we tighten all the way to 1/99. Sharpe reaches 2.15 and max drawdown is -39.7% — better than its 5/95 drawdown of -58.9%.
+- **Momentum** (6-month return): Sharpe of 0.33 at 30/70, gradually improving, then flips to **-0.27 at 1/99**. The momentum crash of 2009 is concentrated in extreme winners and losers. At 30/70 you diversify through it. At 1/99 it wipes you out.
+- **Profit growth**: 1.04 at 30/70, drops to 0.40 at 1/99. The smooth accounting-based relationship gets swamped by idiosyncratic noise when you only hold 50 stocks per leg.
+- **Leverage**: 0.22 at 30/70, turns **negative** (-0.41) at 1/99 with a -82.6% max drawdown. The most extreme leverage stocks are distressed companies — high debt not because of a capital structure choice, but because they are spiraling.
+- **Even size** peaks at 5/95 (Sharpe 2.17) and *drops* to 1.97 at 1/99.
 
-I think this pattern has a clear behavioral explanation. Stocks that experience the most extreme recent moves are precisely the ones that attract disproportionate attention. Investors chase the top movers and flee the bottom movers, pushing prices further from fundamentals than any gradual drift would justify. This is why the strategy improves monotonically as I move toward the tails. The further I go into the extremes, the more my portfolio is composed purely of stocks where the attention effect was strongest and where the subsequent reversal is most predictable. Widening to 5/95 or 30/70 dilutes the portfolio with stocks where the move was too small to trigger the same feedback, and the signal weakens accordingly.
+Why does this happen? At 1/99, you are holding roughly 50 stocks in each leg. One bad earnings surprise, one lawsuit, one delisting — and it is a meaningful percentage of your portfolio. The signal might be real, but the noise from holding so few names dominates. At 5/95 you have ~250 stocks per leg, and the law of large numbers helps.
 
-## Group 3: Signals destroyed by tightening
+## Exception 1: Short-Term Reversal — the attention trade
 
-A third group is actively destroyed by extreme cutoffs.
+**Reversal** is the strongest exception. Sharpe improves monotonically from 0.82 at 30/70 to 1.59 at 5/95 to **2.15 at 1/99**. Even the max drawdown improves: -41.9% at 30/70, -58.9% at 5/95, then tightening to **-39.7% at 1/99**. Both Sharpe and risk improve together as you go more extreme. No other signal does this.
 
-**Profit growth** (`niq_at_chg1`) goes from Sharpe 1.04 at 30/70 down to 0.40 at 1/99. **Profitability** (`op_at`) drops from 0.64 to 0.21. **Momentum** (`ret_6_1`) actually flips negative at 1/99 (-0.27) despite being positive at every other cutoff.
+I think this has a clear behavioral explanation. Stocks that experienced the most extreme recent moves are precisely the ones that attract disproportionate attention. Investors chase the top movers and flee the bottom movers, pushing prices further from fundamentals than any gradual drift would justify. The further I go into the tails, the more my portfolio is composed purely of stocks where this attention-driven overshoot was strongest — and where the subsequent reversal is most predictable.
 
-Why? These signals are smoother. The relationship between the characteristic and future returns is roughly monotonic, but it does not steepen at the extremes the way size or reversal does. At 1/99, you have so few stocks that idiosyncratic noise dominates the signal. A single bad earnings surprise in your 50-stock long leg can wreck the month.
+Widening to 5/95 or 30/70 dilutes the portfolio with stocks where last month's move was moderate. A 3% drop does not trigger the same panic selling and subsequent bounce-back that a 20% drop does. The reversal signal is not linear — it is convex in the extremes.
 
-**Leverage** (`debt_at`) is the worst case: Sharpe of -0.41 at 1/99, with a -82.6% max drawdown. The most extreme leverage deciles are dominated by financial distress cases where the characteristic value is high not because of a deliberate capital structure choice, but because the company is in trouble. Going extreme here puts you long firms about to blow up.
+## Exception 2: Value — the deepest discount wins
+
+**Value** (book-to-market) also improves all the way to 1/99: Sharpe of 0.57 at 30/70 rising to **0.90 at 1/99**. The very cheapest stocks — trading at deep discounts to book value — really do outperform the merely cheap.
+
+This is consistent with the classic value story. Extreme-value stocks are often companies that the market has given up on. They might be shrinking, out of favor, or in declining industries. The market prices in a bleak future, and when reality turns out to be less bad than expected, the stock reprices sharply. This "expectations gap" is largest for the most extreme value stocks, which is why tighter constrictions keep working.
+
+## Exception 3: Beta — a quirk, not a strategy
+
+**Beta** (60-month market beta) shows Sharpe of 0.25 at 1/99 but is **negative** at every other cutoff (-0.17 at 5/95). This looks like an exception but I would not read too much into it. A Sharpe of 0.25 from a low-beta strategy at 1/99 is not economically compelling, especially with a -96.7% max drawdown. The "low beta anomaly" likely requires more careful construction (industry-neutral, volatility-adjusted) than a simple sort can deliver.
+
+## Why exceptions are exceptions
+
+The three signals that improve at 1/99 share a common trait: **the characteristic-return relationship is convex, not linear.** For reversal, the overshoot-and-bounce mechanism is strongest at the extremes. For value, the expectations gap is widest for the cheapest stocks. For most other signals — profitability, investment, quality — the relationship is roughly linear. Going from the 5th percentile to the 1st percentile of asset growth does not give you meaningfully more information about future returns, but it does halve the number of stocks in your portfolio.
 
 ## The Drawdown Heatmap Tells the Other Half of the Story
 
@@ -95,9 +110,11 @@ At 5/95, the numbers are more reasonable: size at 77% annualized, reversal at 48
 
 ## Key Takeaway
 
-There is no single constriction level that works across all signals. The right answer is signal-specific, and ignoring that is leaving performance on the table at best and destroying it at worst.
+**10 out of 13 signals get worse when you push from 5/95 to 1/99.** The average Sharpe drop is 0.23. Extreme constriction is not free — it buys you signal strength but costs you diversification, and for most signals the cost wins.
 
-However, for the rest of this series, as we play around with other portfolio settings, I find it reasonable to **use 5/95 as a baseline** since most signals either peak there or are not far off. The main exception is short-term reversal, where 1/99 dominates — but even for reversal, 5/95 gives a Sharpe of 1.59, which is plenty to work with.
+The three exceptions — reversal, value, and beta — are not random. They are signals where the characteristic-return relationship is **convex**: the effect accelerates at the extremes. Reversal has a behavioral explanation (attention-driven overshooting), value has a fundamental one (deepest discounts = widest expectations gaps). Understanding *why* a signal is convex is what separates a principled decision from a data-mined one.
+
+For the rest of this series, I use **5/95 as the baseline**. It is either the optimal or near-optimal cutoff for the majority of signals, and even for the exceptions (reversal, value), 5/95 still produces strong performance. It is the "safe default" — you leave a little on the table for reversal but avoid catastrophe for momentum, leverage, and profitability.
 
 In Part 3, we turn to the second tuning fork — weight scheme. Equal weighting, value weighting, characteristic-rank weighting, and characteristic-minmax weighting each impose a different structure on the portfolio. We will see that the choice of weight scheme can matter even more than the cutoff.
 
