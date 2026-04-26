@@ -19,6 +19,6 @@ data/*.parquet
 .ipynb_checkpoints/
 step3_checkpoints/
 
-# Output
-*.png
-*.csvfama-french-factor-replication/
+# Output (except blog charts)
+*.csv
+fama-french-factor-replication/
