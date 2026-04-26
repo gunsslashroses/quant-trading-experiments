@@ -48,7 +48,7 @@ This is where the engineering matters. The same 13 signals can produce wildly di
 
 ### Universe and breakpoints
 
-Every month, I rank all stocks on each characteristic. But "all stocks" is a loaded term — NASDAQ is full of tiny firms that are expensive to trade and can distort percentile cutoffs. Following the Fama-French convention, I compute breakpoints using **NYSE stocks only**, then apply those breakpoints to the full universe (NYSE + AMEX + NASDAQ). This prevents micro-caps from overwhelming the portfolio assignments.
+Every month, I rank all stocks on each characteristic. But "all stocks" is a loaded term — NASDAQ is full of tiny firms that are expensive to trade and can distort percentile cutoffs. Following the Fama-French convention, the code gives the user an option to drop micro cap stocks from the analysis.
 
 ### Percentile cutoffs
 
@@ -91,7 +91,7 @@ Individual signals are interesting, but the real question is whether combining t
 
 ## What's next
 
-The notebooks extend this further into ML territory — using the same 13 characteristics (plus realized volatility and industry dummies) as features for return prediction with linear regression, random forests, neural networks, AdaBoost, IPCA, and a custom max-Sharpe-ratio model. But the portfolio engineering described here is the foundation that all of it sits on.
+The notebooks extend this further into ML territory — using the same 13 characteristics (plus realized volatility and industry dummies) as features for return prediction with linear regression, random forests, neural networks, AdaBoost, and IPCA. But the portfolio engineering described here is the foundation that all of it sits on.
 
 The code for everything above lives in `src/quant_trading/` — signals, portfolios, strategies, evaluation. The notebooks in `notebooks/` are the exploratory analysis.
 
