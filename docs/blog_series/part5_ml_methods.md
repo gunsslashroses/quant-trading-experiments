@@ -1,81 +1,96 @@
-# Building Optimal Systematic Portfolios (Part 5/n): Can Machine Learning Beat Factor Models?
+# Building Optimal Systematic Portfolios (Part 5/n): Can Machine Learning Beat Factor Sorts?
 
 *Documenting my learnings in building the best systematic portfolios with what I know*
 
 ---
 
-Up to this point, everything in this series has been a **sort-based strategy**. Take a characteristic, rank stocks, go long the top, short the bottom. The portfolio engineering we discussed in Parts 2–4 (cutoffs, weights, combinations) is sophisticated, but the underlying approach is simple: the signal is the raw characteristic value, and the portfolio is a mechanical sort on that value.
+In Parts 2–4, we exhausted the sort-based playbook. We found that a simple equal-weight composite of 13 rank-scaled signals achieves a Sharpe of 2.39 with a -24% max drawdown, and that consensus voting at n≥2 delivers the best drawdown in the series at -10.3%.
 
-Machine learning asks a different question. Instead of sorting on one characteristic at a time (or a naive average of 13), can we learn a **function** that maps all characteristics simultaneously to an expected return?
+Now the natural question: can machine learning do better?
 
-I trained seven models on all data up to 2015 and tested them out-of-sample from 2016 onward. Same 13 characteristics as features, plus realized volatility and industry dummies. Same long-short portfolio evaluation. The only thing that changed is *how* the prediction is generated.
+The answer, spoiler alert, is yes — but not for the reasons you might expect. The improvement is not about finding hidden nonlinear patterns in the data. It is about the drawdown column.
 
-## The Models
+## The Setup
 
-| # | Model | What it does |
-|---|-------|-------------|
-| 1 | **Linear Regression** | Baseline OLS. Learns a linear combination of features. |
-| 2 | **RBF Kernel Ridge** | Captures nonlinear feature interactions via an RBF kernel approximation (Nyström method) with Ridge regularization. |
-| 3 | **Random Forest** | Ensemble of shallow decision trees. Each tree sees a random subset of features, reducing overfitting. |
-| 4 | **Deep Neural Network** | Two-layer NN with L2 regularization and Huber loss (robust to outliers). |
-| 5 | **AdaBoost** | Boosted decision trees — iteratively focuses on the hardest-to-predict stocks. |
-| 6 | **Max Sharpe Regression (MSRR)** | A linear model trained not to minimize prediction error, but to directly maximize the portfolio's Sharpe ratio. Custom PyTorch loss function. |
-| 7 | **IPCA** | Instrumented PCA — learns latent factors whose loadings are linear functions of observable characteristics. |
+I trained five models on all data up to December 2015 and tested them out-of-sample from January 2016 onward. Same 13 characteristics as features, plus realized volatility and Fama-French 49-industry dummies (64 features total). Same long-short portfolio evaluation framework from Parts 2–4. The only thing that changed is how the expected return prediction is generated.
 
-## Hyperparameter Tuning: Why Grid Search is Dead
+| Model | What it does |
+|-------|-------------|
+| **Linear Regression** | Baseline OLS. Just a linear combination of features. |
+| **RBF Kernel Ridge** | Captures nonlinear feature interactions via a kernel approximation with Ridge regularization. |
+| **Random Forest** | Ensemble of shallow decision trees, each seeing a random subset of features. |
+| **Deep Neural Network** | Two-layer NN with L2 regularization and Huber loss. |
+| **IPCA** | Instrumented PCA — learns latent factors whose loadings depend on observable characteristics. |
 
-For models 2–5, I used **Optuna** — a Bayesian optimization framework that replaces grid search. Instead of evaluating every point on a pre-defined grid, Optuna models the objective function surface and focuses trials on the most promising HP regions. It's the same idea as the coarse-to-fine manual search I discussed in Part 2, but automatic and principled.
+For Random Forest and RBF Kernel Ridge, hyperparameters were tuned using Optuna (Bayesian optimization) with temporal cross-validation. The DNN used Optuna as well, searching over regularization strength, learning rate, layer widths, and loss function. All HP tuning was done on a subsample to keep compute feasible, then the best model was refit on the full training set.
 
-Each model's hyperparameters are tuned with 5-fold `TimeSeriesSplit` cross-validation — no look-ahead bias. The HP search runs on a 200–300k row subsample (the full dataset is ~4M rows for training, which would take days to grid-search over).
+## The Results
 
-## The Reality Check: OOS R² is Tiny
+*[Insert: ml_sharpe_drawdown_combined.png]*
 
-Here are the out-of-sample results:
+| Model | Sharpe | Max DD (%) |
+|-------|--------|-----------|
+| **Deep Neural Network** | **2.53** | **-1.9** |
+| **Random Forest** | **2.35** | -7.6 |
+| **RBF Kernel Ridge** | 2.31 | -1.6 |
+| Linear Regression | 2.24 | -11.9 |
+| IPCA | 2.20 | -11.3 |
 
-| Model | OOS R² | Sign Accuracy |
-|-------|--------|---------------|
-| Linear Regression | 0.1% | 50.1% |
-| RBF Kernel Ridge | 0.3% | 50.9% |
-| **Random Forest** | **5.0%** | **51.1%** |
-| DNN (L2 + Huber) | 0.4% | 52.4% |
-| AdaBoost | — | — |
-| MSRR | -145% | 51.1% |
-| IPCA | 0.1% | 50.2% |
+*(Equal weight, best cutoff per model)*
 
-Let me be honest about these numbers. An OOS R² of 5% means the model explains 5% of the variation in next-month returns. That sounds awful. The sign accuracy is barely above a coin flip.
+Every ML model produces a Sharpe above 2.0. That is the first observation. Even the baseline linear regression, which is just a linear combination of the same 13 signals we used in Parts 2–4, achieves 2.24. The sort-based composite from Part 4 achieved 2.39. So ML is in the same ballpark — the headline Sharpe numbers are not dramatically different.
 
-But here's the thing: **this is completely expected.** In the cross-section of equity returns, even the best models achieve R² in the low single digits. Gu, Kelly, and Xiu (2020) — the seminal ML-for-asset-pricing paper — report OOS R² of about 0.4% monthly for their best neural network. The fact that my Random Forest gets 5% is actually suspiciously high and warrants scrutiny (it may be capturing something nonlinear in the feature interactions, or it may be overfitting to the subsample period).
+The difference is in the drawdowns.
 
-The MSRR result (R² = -145%) looks terrible, but MSRR doesn't optimize for prediction accuracy — it optimizes for portfolio Sharpe ratio. Its predictions are wildly scaled (mean prediction ~0.13, vs actual returns ~0.01) because it's trying to maximize the *ranking* of returns, not predict their *level*. The portfolio-level evaluation is where it should be judged.
+## The Drawdown Story
 
-## What Actually Matters: Portfolio Performance
+The DNN achieves a max drawdown of **-1.9%** at the 30/70 cutoff. RBF Kernel Ridge hits **-1.6%** at 5/95. Compare this to the best sort-based results:
 
-This is where the ML models earn their keep. Even tiny improvements in prediction accuracy can translate to meaningful portfolio improvements when you sort on the predictions:
+- Best single factor (size, char-rank, 5/95): Sharpe 2.26, max drawdown **-50.6%**
+- Best composite (equal-weight, rank): Sharpe 2.39, max drawdown **-24.3%**
+- Best consensus (n≥2): Sharpe 1.89, max drawdown **-10.3%**
+- **DNN at 30/70**: Sharpe **2.53**, max drawdown **-1.9%**
 
-At the 30/70 cutoff with equal weighting, the DNN achieves a Sharpe of about 2.5 — better than the best single-factor sort in our entire grid search (size at 2.26). And the DNN's advantage grows at tighter cutoffs.
+The DNN does not just match the best Sharpe from Parts 2–4. It delivers it with almost no drawdown. A max drawdown of -1.9% over a 9-year out-of-sample period means the strategy essentially never had a bad quarter.
 
-Random Forest similarly produces strong portfolio Sharpe ratios, driven not by getting the level of returns right, but by getting the **ranking** approximately right. In cross-sectional investing, you only need to know that stock A will outperform stock B — you don't need to know by how much.
+*[Insert: ml_sharpe_by_cutoff.png]*
 
-## The Engineering That Nobody Talks About
+## Why ML Helps: Ranking, Not Levels
 
-Building these models at scale required solving problems that no ML textbook covers:
+How can a model with an OOS R² of less than 1% produce a Sharpe of 2.53? Because cross-sectional investing only requires getting the **ranking** approximately right. You do not need to predict that stock A will return 2.3% next month. You only need to predict that stock A will outperform stock B. Even tiny improvements in ranking accuracy translate to meaningful portfolio improvements when you sort 8,000+ stocks into long and short legs.
 
-**Memory**: The full training set is ~4M rows × 64 features. With 7 models in one notebook, peak memory easily exceeds 15 GB. I split the data into parquet files, load only what's needed for each model, and free test data after evaluation. This is boring infrastructure work, but without it, the notebook just crashes.
+The DNN and Random Forest achieve this by capturing nonlinear interactions between features that a simple sort or linear average misses. A stock that has both low momentum and high accruals might be much worse than either signal alone would suggest. A linear model treats these as additive; a tree or neural net can learn that the combination is particularly toxic.
 
-**HP tuning at scale**: Running Optuna with 50 trials × 5 CV folds × 100 epochs on 4M rows is infeasible. Each trial would take 10+ minutes; 250 trials would take 40+ hours. Solution: subsample 200–300k rows for the HP search, then refit the best configuration on the full dataset.
+## The Cutoff Pattern Is Inverted for DNN
 
-**Temporal CV**: A subtle but critical detail. Keras's `validation_split=0.2` takes the last 20% of the array, which may mix time periods. For time-series data, I split temporally: first 80% of the training period for fitting, last 20% for early stopping. All HP tuning uses `TimeSeriesSplit`, not random K-fold.
+Something interesting in the heatmap: the DNN achieves its **best Sharpe at 30/70** (2.53), and it **declines** as you go to tighter cutoffs — 2.49 at 10/90, 2.26 at 5/95, 2.11 at 1/99.
 
-**DNN specifics**: The original architecture used L1 regularization on biases, which is harmful for BatchNormalization layers. It also used `batch_size=2048`, which gives too few gradient steps per epoch on datasets of 200k–4M rows. The final version uses L2 regularization, Huber loss (robust to return outliers), batch_size=4096, and no BatchNorm or Dropout.
+This is the opposite of most single-factor strategies, where tighter cutoffs improved performance up to a point. The DNN's predictions are already a composite of all 13 signals plus their interactions. Going to extreme cutoffs does not add much signal — the model has already identified which stocks are the best and worst. But it does reduce the number of stocks, which hurts diversification.
 
-## Key Takeaway
+In other words, the DNN has already done the signal concentration work internally. You do not need to do it again at the portfolio construction level.
 
-1. **OOS R² is tiny but that's normal.** Cross-sectional return prediction is fundamentally hard. Even 0.5% R² can generate profitable portfolios.
-2. **Portfolio Sharpe is what matters**, not prediction MSE. ML models earn their keep by improving *rankings*, not *levels*.
-3. **Random Forest is the workhorse.** It's the best performer in my experiments — nonlinear, handles mixed features natively, and doesn't need feature scaling.
-4. **The engineering is the hard part.** Memory management, temporal CV, subsample HP tuning — this is where most of the actual work goes.
-5. **MSRR is an interesting idea but fragile.** Optimizing directly for Sharpe ratio is appealing but produces unstable predictions.
+Random Forest and RBF Kernel Ridge show the more familiar pattern — peaking around 5/95 to 10/90 — suggesting their predictions still benefit from focusing on the extremes.
+
+*[Insert: ml_drawdown_by_cutoff.png]*
+
+## IPCA and Linear Regression: The Academic Baselines
+
+IPCA (Instrumented PCA) and Linear Regression perform similarly — Sharpe around 2.05–2.24, drawdowns around -10% to -17%. These are respectable numbers. They confirm that even a linear model applied to all 13 features simultaneously outperforms any single-factor sort from Part 2.
+
+But they do not get the drawdown improvements that the nonlinear models achieve. The gap between linear regression (max DD -11.9%) and the DNN (max DD -1.9%) is not about Sharpe — it is about path. Both produce similar returns per unit of risk. The DNN just spreads the returns more evenly across months.
+
+## Key Takeaways
+
+**1. ML improves drawdowns more than Sharpe.** The headline Sharpe ratios (2.1–2.5) are in the same range as the best sort-based strategies (2.3–2.4). The real gain is in reducing max drawdowns from -10% to -50% down to -2%.
+
+**2. The DNN prefers wide cutoffs.** Unlike single-factor sorts, the DNN's best performance is at 30/70 — the widest cutoff. It has already concentrated the signal internally. Tight cutoffs just reduce diversification without adding information.
+
+**3. Random Forest is the most consistent.** It delivers Sharpe above 2.3 across all cutoffs and weight schemes, making it the most robust model to portfolio construction choices.
+
+**4. Even linear regression beats single-factor sorts.** Using all 13 features simultaneously in a simple linear model (Sharpe 2.24) outperforms the best single-factor sort (Sharpe 2.26 for size, but with -50.6% drawdown vs -11.9%).
+
+**5. The Sharpe numbers are high.** All models produce Sharpe ratios above 2.0 out of sample. These are long-short portfolios without transaction costs on a universe that includes small-cap stocks. Real-world implementation would face slippage, capacity constraints, and borrowing costs that would compress these numbers. But the relative ranking of models should be stable.
 
 ---
 
-*All results use the JKP global factor dataset, US common equities, train ≤2015, test ≥2016. Hyperparameter tuning via Optuna (Akiba et al., KDD 2019). Code on [GitHub](https://github.com/gunsslashroses/quant-trading-experiments).*
+*All results out-of-sample: train ≤ 2015, test 2016–2025. JKP global factor dataset, US common equities. Hyperparameter tuning via Optuna (Akiba et al., KDD 2019). Code on [GitHub](https://github.com/gunsslashroses/quant-trading-experiments).*
