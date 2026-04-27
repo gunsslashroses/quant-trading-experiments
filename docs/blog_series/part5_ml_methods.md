@@ -91,6 +91,40 @@ But they do not get the drawdown improvements that the nonlinear models achieve.
 
 **5. The Sharpe numbers are high.** All models produce Sharpe ratios above 2.0 out of sample. These are long-short portfolios without transaction costs on a universe that includes small-cap stocks. Real-world implementation would face slippage, capacity constraints, and borrowing costs that would compress these numbers. But the relative ranking of models should be stable.
 
+## Robustness Check: Are Nano-Caps Driving Everything?
+
+At this point I need to be honest about a concern. The Sharpe ratios above — 2.1 to 2.5 across all models — are high. Suspiciously high. The full JKP universe includes thousands of nano-cap and micro-cap stocks with market caps below $50M. These stocks can have monthly returns of +500% or -90%. They are barely tradeable in practice. If our ML models are just learning to pick up on nano-cap return explosions, the results are real in-sample but meaningless for any practical purpose.
+
+So I reran the entire analysis after **dropping all nano-cap and micro-cap stocks** from the universe. Same models, same features, same train/test split, same portfolio construction. The only change is the stock universe.
+
+*[Insert: ml_robustness_bar.png]*
+
+| Model | Sharpe (Full) | Sharpe (No Nano/Micro) | Drop |
+|-------|:---:|:---:|:---:|
+| Deep Neural Network | 2.53 | 1.96 | -0.57 |
+| Random Forest | 2.35 | 1.58 | -0.77 |
+| RBF Kernel Ridge | 2.31 | 1.24 | -1.07 |
+| Linear Regression | 2.24 | 1.24 | -1.00 |
+| IPCA | 2.20 | 1.05 | -1.15 |
+
+The Sharpe ratios drop significantly — roughly cut in half for most models. This confirms that a large fraction of the performance was coming from the smallest, least tradeable stocks. The nano-cap universe is where the cross-sectional signal is strongest, because those stocks are the least efficiently priced. Remove them and you remove much of the alpha.
+
+But here is the important part: **the ranking of models is preserved, and the DNN still leads.** At 1.96, the DNN's Sharpe without nano-caps is still a strong strategy. It also retains the best drawdown profile among all models (-5.9% vs -10% to -34% for the rest).
+
+*[Insert: ml_robustness_4panel.png]*
+
+The drawdown story also changes. Without nano-caps, the near-zero drawdowns from the full universe (DNN at -1.9%) become more realistic numbers (-5.9% for DNN, -10.8% to -16.7% for the linear models). The full-universe drawdowns were artificially suppressed because nano-cap returns are so volatile that the long-short spread was always positive — driven by outlier returns on the long side.
+
+**What does this mean?**
+
+1. **The headline Sharpe numbers from the full universe are inflated.** They are real in-sample but not achievable at scale. If you are managing real capital, the no-nano-micro numbers are the relevant benchmark.
+
+2. **The relative model rankings survive.** DNN > Random Forest > the rest. This ordering is robust to the universe filter, which means the models are learning something real about the feature interactions — not just picking up on nano-cap noise.
+
+3. **A Sharpe of 1.5–2.0 without nano-caps is still strong.** For context, most published factor strategies achieve Sharpe ratios of 0.5–1.0 after realistic filters. The DNN at 1.96 without nano-caps is a genuinely good result.
+
+4. **This is a reminder to always question your backtest.** The first result looked too good. The robustness check shows why, and the answer is honest: small stocks contributed disproportionately. Reporting both results — and explaining the gap — is more useful than reporting only the flattering one.
+
 ---
 
 *All results out-of-sample: train ≤ 2015, test 2016–2025. JKP global factor dataset, US common equities. Hyperparameter tuning via Optuna (Akiba et al., KDD 2019). Code on [GitHub](https://github.com/gunsslashroses/quant-trading-experiments).*
