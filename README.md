@@ -47,35 +47,6 @@ pip install -e ".[dev,ml]"
 cp /path/to/jkp_data.csv .
 ```
 
-## Notebooks
-
-### 02 — Single-Factor Strategies
-
-Grid search across **676 configurations**: 13 characteristics × 4 percentile pairs × 4 weight schemes (with conditional weight caps). Micro-cap stocks dropped. Top strategies ranked by Sharpe ratio.
-
-**Key result**: Size (`market_equity`) dominates with Sharpe ~2.26 (5/95 percentile, char_rank_weighted). Short-term reversal (`ret_1_0`) follows at Sharpe ~2.15.
-
-### 03 — Combined Signal Methods
-
-Three ways to combine all 13 signals:
-- **M1 (Consensus Voting)**: n-out-of-13 threshold
-- **M2 (Equal-Weight Composite)**: rank-scaled signals
-- **M3 (IC-Weighted Composite)**: rolling-IC weights
-
-### 04 — ML Return Prediction
-
-Seven models trained on pre-2016 data, tested 2016+. Tunable models use **[Optuna](https://doi.org/10.1145/3292500.3330701)** (Bayesian optimization with TPE sampler) for HP tuning with temporal CV. Data saved as parquet splits to manage memory.
-
-| Model | HP Tuning | OOS R² | Sign Acc |
-|-------|-----------|--------|----------|
-| Linear Regression | — | 0.001 | 50.1% |
-| RBF Kernel Ridge | Optuna (50 trials) | 0.003 | 50.9% |
-| Random Forest | Optuna (40 trials) | 0.050 | 51.1% |
-| DNN v2 (L2 + Huber) | Optuna (20 trials) | 0.004 | 52.4% |
-| AdaBoost v2 | Optuna | — | — |
-| MSRR | — | -1.45 | 51.1% |
-| IPCA | — | 0.001 | 50.2% |
-
 ## Running Tests
 
 ```bash
