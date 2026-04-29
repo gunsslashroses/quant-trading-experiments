@@ -28,6 +28,7 @@ from tensorflow.keras.layers import Dense, Input, LeakyReLU
 # =============================================================================
 
 WeightMethod = Literal["equal", "char_rank_weighted"]
+SelectionMethod = Literal["percentile_threshold", "top_bottom_fraction"]
 TrainWindowMode = Literal["rolling", "expanding"]
 
 
@@ -61,6 +62,7 @@ class SubmissionConfig:
     max_train_eom: str | None = None  # e.g. "2015-12-31"
     min_test_eom: str | None = None   # e.g. "2016-01-31"
     max_test_eom: str | None = None   # e.g. "2024-12-31"
+    respect_ctff_test_flags: bool = True
 
     # Training window logic
     train_window_mode: TrainWindowMode = "rolling"
@@ -72,8 +74,14 @@ class SubmissionConfig:
     winsorize_target: bool = True
     winsor_lower_q: float = 0.01
     winsor_upper_q: float = 0.99
+    winsorize_features: bool = False
+    feature_winsor_lower_q: float = 0.01
+    feature_winsor_upper_q: float = 0.99
 
-    # Portfolio construction (long-short percentiles)
+    # Portfolio construction
+    selection_method: SelectionMethod = "percentile_threshold"
+    top_bottom_fraction: float = 0.30
+    # Used when selection_method == "percentile_threshold"
     lower_pct: float = 0.30  # 30/70 default
     upper_pct: float = 0.70
     weight_method: WeightMethod = "equal"
@@ -215,6 +223,8 @@ def _normalize_leg_weights(raw_w: pd.Series, side: pd.Series, cap: float | None)
 def _weights_from_predictions(
     frame: pd.DataFrame,
     pred_col: str,
+    selection_method: SelectionMethod,
+    top_bottom_fraction: float,
     lower_pct: float,
     upper_pct: float,
     method: WeightMethod,
@@ -223,11 +233,24 @@ def _weights_from_predictions(
     f = frame.copy()
     f["position"] = 0
 
-    lo = f[pred_col].quantile(lower_pct)
-    hi = f[pred_col].quantile(upper_pct)
-
-    f.loc[f[pred_col] <= lo, "position"] = -1
-    f.loc[f[pred_col] >= hi, "position"] = 1
+    if selection_method == "percentile_threshold":
+        lo = f[pred_col].quantile(lower_pct)
+        hi = f[pred_col].quantile(upper_pct)
+        f.loc[f[pred_col] <= lo, "position"] = -1
+        f.loc[f[pred_col] >= hi, "position"] = 1
+    elif selection_method == "top_bottom_fraction":
+        frac = float(top_bottom_fraction)
+        if frac <= 0 or frac > 0.5:
+            raise ValueError("top_bottom_fraction must be in (0, 0.5]")
+        n = len(f)
+        n_side = max(1, int(np.floor(n * frac)))
+        ordered = f.sort_values(pred_col, ascending=False).copy()
+        long_idx = ordered.head(n_side).index
+        short_idx = ordered.tail(n_side).index
+        f.loc[long_idx, "position"] = 1
+        f.loc[short_idx, "position"] = -1
+    else:
+        raise ValueError(f"Unsupported selection method: {selection_method}")
 
     active = f[f["position"] != 0].copy()
     if active.empty:
@@ -321,6 +344,13 @@ def main(chars: pd.DataFrame, features: pd.DataFrame, daily_ret: pd.DataFrame) -
 
     # Fill feature NA with month-wise medians to avoid dropping too much data.
     d[feature_list] = d.groupby(eom_col)[feature_list].transform(lambda x: x.fillna(x.median()))
+    if cfg.winsorize_features:
+        d[feature_list] = d.groupby(eom_col)[feature_list].transform(
+            lambda x: x.clip(
+                lower=x.quantile(cfg.feature_winsor_lower_q),
+                upper=x.quantile(cfg.feature_winsor_upper_q),
+            )
+        )
     d[feature_list] = d[feature_list].fillna(0.0)
 
     # Standardize naming for downstream logic.
@@ -328,8 +358,13 @@ def main(chars: pd.DataFrame, features: pd.DataFrame, daily_ret: pd.DataFrame) -
     d["eom"] = pd.to_datetime(d["eom"])
 
     # Optional extra train/test date constraints.
-    train_df = d[d["ctff_test"] == 0].copy()
-    test_df = d[d["ctff_test"] == 1].copy()
+    if cfg.respect_ctff_test_flags:
+        train_df = d[d["ctff_test"] == 0].copy()
+        test_df = d[d["ctff_test"] == 1].copy()
+    else:
+        # Local experimentation mode: train/test chosen only by date guards.
+        train_df = d.copy()
+        test_df = d.copy()
 
     train_df = _apply_optional_date_filter(train_df, "eom", cfg.min_train_eom, cfg.max_train_eom)
     test_df = _apply_optional_date_filter(test_df, "eom", cfg.min_test_eom, cfg.max_test_eom)
@@ -399,6 +434,8 @@ def main(chars: pd.DataFrame, features: pd.DataFrame, daily_ret: pd.DataFrame) -
         w = _weights_from_predictions(
             pred_frame,
             pred_col="pred",
+            selection_method=cfg.selection_method,
+            top_bottom_fraction=cfg.top_bottom_fraction,
             lower_pct=cfg.lower_pct,
             upper_pct=cfg.upper_pct,
             method=cfg.weight_method,
